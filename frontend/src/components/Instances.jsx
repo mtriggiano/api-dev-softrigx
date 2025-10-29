@@ -1,0 +1,498 @@
+import { useState, useEffect } from 'react';
+import { instances } from '../lib/api';
+import { Server, Play, Square, Trash2, RefreshCw, Database, FileText, Plus, Eye, AlertCircle } from 'lucide-react';
+import ConfirmModal from './ConfirmModal';
+import Toast from './Toast';
+
+export default function Instances() {
+  const [instanceList, setInstanceList] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState({});
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newInstanceName, setNewInstanceName] = useState('');
+  const [selectedInstance, setSelectedInstance] = useState(null);
+  const [logs, setLogs] = useState('');
+  const [confirmModal, setConfirmModal] = useState({ isOpen: false, action: null, instanceName: null });
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+  const [creationLog, setCreationLog] = useState({ show: false, instanceName: '', log: '' });
+  const [updateLog, setUpdateLog] = useState({ show: false, instanceName: '', action: '', log: '' });
+  const [restartModal, setRestartModal] = useState({ show: false, instanceName: '', status: 'Reiniciando...' });
+
+  useEffect(() => {
+    fetchInstances();
+    const interval = setInterval(fetchInstances, 10000); // Actualizar cada 10 segundos
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchInstances = async () => {
+    try {
+      const response = await instances.list();
+      setInstanceList(response.data.instances);
+      setLoading(false);
+    } catch (error) {
+      console.error('Error fetching instances:', error);
+      setLoading(false);
+    }
+  };
+
+  const showConfirmation = (action, instanceName) => {
+    setConfirmModal({ isOpen: true, action, instanceName });
+  };
+
+  const handleAction = async (action, instanceName) => {
+    setActionLoading({ ...actionLoading, [`${action}-${instanceName}`]: true });
+    
+    try {
+      let response;
+      
+      // Para update-db y update-files, mostrar modal con log
+      if (action === 'update-db' || action === 'update-files') {
+        response = action === 'update-db' 
+          ? await instances.updateDb(instanceName)
+          : await instances.updateFiles(instanceName);
+        
+        if (response.data.success) {
+          setUpdateLog({ show: true, instanceName, action, log: 'Iniciando actualizaci\u00f3n...\n' });
+          
+          // Polling del log cada 2 segundos
+          const logInterval = setInterval(async () => {
+            try {
+              const logResponse = await instances.getUpdateLog(instanceName, action);
+              setUpdateLog(prev => ({ ...prev, log: logResponse.data.log || 'Esperando...' }));
+              
+              // Si el log contiene "\u2705" significa que termin\u00f3
+              if (logResponse.data.log && logResponse.data.log.includes('\u2705')) {
+                clearInterval(logInterval);
+                setTimeout(() => {
+                  setUpdateLog({ show: false, instanceName: '', action: '', log: '' });
+                  setToast({ show: true, message: 'Actualizaci\u00f3n completada', type: 'success' });
+                  fetchInstances();
+                }, 3000);
+              }
+            } catch (err) {
+              console.error('Error fetching log:', err);
+            }
+          }, 2000);
+        }
+      } else if (action === 'restart') {
+        // Para reiniciar, mostrar modal con estado
+        setRestartModal({ show: true, instanceName, status: 'Deteniendo servicio...' });
+        
+        response = await instances.restart(instanceName);
+        
+        if (response.data.success) {
+          setRestartModal(prev => ({ ...prev, status: 'Iniciando servicio...' }));
+          
+          // Esperar un momento y verificar estado
+          setTimeout(async () => {
+            setRestartModal(prev => ({ ...prev, status: '\u2705 Servicio reiniciado correctamente' }));
+            
+            setTimeout(() => {
+              setRestartModal({ show: false, instanceName: '', status: '' });
+              setToast({ show: true, message: 'Instancia reiniciada correctamente', type: 'success' });
+              fetchInstances();
+            }, 2000);
+          }, 2000);
+        }
+      } else {
+        // Para delete y otras acciones
+        switch (action) {
+          case 'delete':
+            response = await instances.delete(instanceName);
+            break;
+          default:
+            break;
+        }
+        
+        if (response) {
+          setToast({ show: true, message: response.data.message || 'Acci\u00f3n completada', type: 'success' });
+          fetchInstances();
+        }
+      }
+    } catch (error) {
+      setToast({ show: true, message: error.response?.data?.error || 'Error al ejecutar la acci\u00f3n', type: 'error' });
+    } finally {
+      setActionLoading({ ...actionLoading, [`${action}-${instanceName}`]: false });
+    }
+  };
+
+  const handleCreateInstance = async () => {
+    if (!newInstanceName.trim()) {
+      setToast({ show: true, message: 'Debes ingresar un nombre para la instancia', type: 'warning' });
+      return;
+    }
+
+    setActionLoading({ create: true });
+    try {
+      const response = await instances.create(newInstanceName);
+      setShowCreateModal(false);
+      setCreationLog({ show: true, instanceName: newInstanceName, log: 'Iniciando creaci\u00f3n...\n' });
+      
+      // Polling del log cada 2 segundos
+      const logInterval = setInterval(async () => {
+        try {
+          const logResponse = await instances.getCreationLog(newInstanceName);
+          setCreationLog(prev => ({ ...prev, log: logResponse.data.log || 'Esperando...' }));
+          
+          // Si el log contiene "\u2705" (checkmark) significa que termin\u00f3
+          if (logResponse.data.log && logResponse.data.log.includes('\u2705 Instancia')) {
+            clearInterval(logInterval);
+            setTimeout(() => {
+              setCreationLog({ show: false, instanceName: '', log: '' });
+              setToast({ show: true, message: 'Instancia creada exitosamente', type: 'success' });
+              fetchInstances();
+            }, 3000);
+          }
+        } catch (err) {
+          console.error('Error fetching log:', err);
+        }
+      }, 2000);
+      
+      setNewInstanceName('');
+    } catch (error) {
+      setToast({ show: true, message: error.response?.data?.error || 'Error al crear la instancia', type: 'error' });
+    } finally {
+      setActionLoading({ create: false });
+    }
+  };
+
+  const handleViewLogs = async (instanceName) => {
+    setSelectedInstance(instanceName);
+    setLogs('Cargando logs...');
+    try {
+      const response = await instances.getLogs(instanceName, 200);
+      setLogs(response.data.logs);
+    } catch (error) {
+      setLogs('Error al cargar logs: ' + (error.response?.data?.error || error.message));
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  const productionInstances = instanceList.filter(i => i.type === 'production');
+  const developmentInstances = instanceList.filter(i => i.type === 'development');
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Instancias Odoo</h2>
+          <p className="text-gray-600 dark:text-gray-300 mt-1">Gestión de instancias de producción y desarrollo</p>
+        </div>
+        <button
+          onClick={() => setShowCreateModal(true)}
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+        >
+          <Plus className="w-5 h-5" />
+          Nueva Instancia Dev
+        </button>
+      </div>
+
+      {/* Producción */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow">
+        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Producción</h3>
+        </div>
+        <div className="p-6">
+          {productionInstances.length === 0 ? (
+            <p className="text-gray-600 dark:text-gray-300 text-center py-4">No hay instancias de producción</p>
+          ) : (
+            <div className="space-y-4">
+              {productionInstances.map((instance) => (
+                <InstanceCard
+                  key={instance.name}
+                  instance={instance}
+                  onAction={showConfirmation}
+                  onViewLogs={handleViewLogs}
+                  actionLoading={actionLoading}
+                  isProduction={true}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Desarrollo */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow">
+        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Desarrollo</h3>
+        </div>
+        <div className="p-6">
+          {developmentInstances.length === 0 ? (
+            <p className="text-gray-600 dark:text-gray-300 text-center py-4">No hay instancias de desarrollo</p>
+          ) : (
+            <div className="space-y-4">
+              {developmentInstances.map((instance) => (
+                <InstanceCard
+                  key={instance.name}
+                  instance={instance}
+                  onAction={showConfirmation}
+                  onViewLogs={handleViewLogs}
+                  actionLoading={actionLoading}
+                  isProduction={false}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Modal de creación */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Crear Nueva Instancia de Desarrollo</h3>
+            <input
+              type="text"
+              value={newInstanceName}
+              onChange={(e) => setNewInstanceName(e.target.value)}
+              placeholder="Nombre (ej: juan, testing, feature-xyz)"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-4"
+            />
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+              <p className="text-sm text-yellow-800">
+                <AlertCircle className="w-4 h-4 inline mr-1" />
+                La creación puede tardar varios minutos. Se clonará desde producción.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={handleCreateInstance}
+                disabled={actionLoading.create}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {actionLoading.create ? 'Creando...' : 'Crear'}
+              </button>
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de reinicio */}
+      {restartModal.show && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md">
+            <div className="flex flex-col items-center text-center">
+              <div className="mb-4">
+                <RefreshCw className="w-16 h-16 text-blue-600 animate-spin" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                Reiniciando: {restartModal.instanceName}
+              </h3>
+              <p className="text-gray-600 dark:text-gray-300">
+                {restartModal.status}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de log de actualizaci\u00f3n */}
+      {updateLog.show && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-4xl max-h-[80vh] flex flex-col">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                {updateLog.action === 'update-db' ? 'Actualizando Base de Datos' : 'Actualizando Archivos'}: {updateLog.instanceName}
+              </h3>
+              <button
+                onClick={() => setUpdateLog({ show: false, instanceName: '', action: '', log: '' })}
+                className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+              <p className="text-sm text-blue-800">
+                ⏳ La actualización puede tardar varios minutos. El log se actualiza automáticamente.
+              </p>
+            </div>
+            <pre className="bg-gray-900 text-green-400 p-4 rounded-lg overflow-auto flex-1 text-sm font-mono whitespace-pre-wrap">
+              {updateLog.log}
+            </pre>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de log de creaci\u00f3n */}
+      {creationLog.show && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-4xl max-h-[80vh] flex flex-col">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Creando instancia: {creationLog.instanceName}</h3>
+              <button
+                onClick={() => setCreationLog({ show: false, instanceName: '', log: '' })}
+                className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+              <p className="text-sm text-blue-800">
+                ⏳ La creación puede tardar varios minutos. El log se actualiza automáticamente.
+              </p>
+            </div>
+            <pre className="bg-gray-900 text-green-400 p-4 rounded-lg overflow-auto flex-1 text-sm font-mono whitespace-pre-wrap">
+              {creationLog.log}
+            </pre>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de logs */}
+      {selectedInstance && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-4xl max-h-[80vh] flex flex-col">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Logs: {selectedInstance}</h3>
+              <button
+                onClick={() => setSelectedInstance(null)}
+                className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300"
+              >
+                ✕
+              </button>
+            </div>
+            <pre className="bg-gray-900 text-green-400 p-4 rounded-lg overflow-auto flex-1 text-sm font-mono">
+              {logs}
+            </pre>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de confirmación */}
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        onClose={() => setConfirmModal({ isOpen: false, action: null, instanceName: null })}
+        onConfirm={() => handleAction(confirmModal.action, confirmModal.instanceName)}
+        title={getConfirmTitle(confirmModal.action)}
+        message={getConfirmMessage(confirmModal.action, confirmModal.instanceName)}
+        confirmText="Confirmar"
+        cancelText="Cancelar"
+        type={confirmModal.action === 'delete' ? 'danger' : 'warning'}
+      />
+
+      {/* Toast de notificaciones */}
+      {toast.show && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast({ show: false, message: '', type: 'success' })}
+        />
+      )}
+    </div>
+  );
+}
+
+function getConfirmTitle(action) {
+  const titles = {
+    restart: 'Reiniciar Instancia',
+    'update-db': 'Actualizar Base de Datos',
+    'update-files': 'Actualizar Archivos',
+    delete: 'Eliminar Instancia'
+  };
+  return titles[action] || 'Confirmar Acción';
+}
+
+function getConfirmMessage(action, instanceName) {
+  const messages = {
+    restart: `¿Deseas reiniciar la instancia ${instanceName}? El servicio se detendrá temporalmente.`,
+    'update-db': `¿Actualizar la base de datos de ${instanceName} desde producción? Esta operación puede tardar varios minutos.`,
+    'update-files': `¿Actualizar los archivos de ${instanceName} desde producción?`,
+    delete: `¿Estás seguro de eliminar la instancia ${instanceName}? Esta acción no se puede deshacer y se perderán todos los datos.`
+  };
+  return messages[action] || '¿Deseas continuar con esta acción?';
+}
+
+function InstanceCard({ instance, onAction, onViewLogs, actionLoading, isProduction }) {
+  const statusColor = instance.status === 'active' ? 'text-green-600' : 'text-red-600';
+  const statusBg = instance.status === 'active' ? 'bg-green-100 dark:bg-green-900' : 'bg-red-100 dark:bg-red-900';
+
+  return (
+    <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-shadow">
+      {/* Header con info */}
+      <div className="flex items-start gap-3 mb-4">
+        <div className={`${statusBg} p-2 rounded-lg flex-shrink-0`}>
+          <Server className={`w-6 h-6 ${statusColor}`} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h4 className="font-semibold text-gray-900 dark:text-white">{instance.name}</h4>
+            <span className={`px-2 py-1 text-xs rounded-full ${statusBg} ${statusColor}`}>
+              {instance.status}
+            </span>
+          </div>
+          <div className="mt-2 space-y-1 text-sm text-gray-600 dark:text-gray-300">
+            {instance.domain && (
+              <p className="truncate">🌐 <a href={`https://${instance.domain}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">{instance.domain}</a></p>
+            )}
+            {instance.port && <p>🔌 Puerto: {instance.port}</p>}
+            {instance.database && <p className="truncate">🗄️ BD: {instance.database}</p>}
+          </div>
+        </div>
+      </div>
+
+      {/* Botones de acción - responsive */}
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={() => onAction('restart', instance.name)}
+          disabled={actionLoading[`restart-${instance.name}`]}
+          className="flex items-center gap-2 px-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors disabled:opacity-50"
+        >
+          <RefreshCw className={`w-4 h-4 ${actionLoading[`restart-${instance.name}`] ? 'animate-spin' : ''}`} />
+          <span className="hidden sm:inline">Reiniciar</span>
+        </button>
+        
+        {!isProduction && (
+          <>
+            <button
+              onClick={() => onAction('update-db', instance.name)}
+              disabled={actionLoading[`update-db-${instance.name}`]}
+              className="flex items-center gap-2 px-3 py-2 text-sm text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors disabled:opacity-50"
+            >
+              <Database className="w-4 h-4" />
+              <span className="hidden sm:inline">BD</span>
+            </button>
+            <button
+              onClick={() => onAction('update-files', instance.name)}
+              disabled={actionLoading[`update-files-${instance.name}`]}
+              className="flex items-center gap-2 px-3 py-2 text-sm text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors disabled:opacity-50"
+            >
+              <FileText className="w-4 h-4" />
+              <span className="hidden sm:inline">Archivos</span>
+            </button>
+            <button
+              onClick={() => onAction('delete', instance.name)}
+              disabled={actionLoading[`delete-${instance.name}`]}
+              className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors disabled:opacity-50"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span className="hidden sm:inline">Eliminar</span>
+            </button>
+          </>
+        )}
+        
+        <button
+          onClick={() => onViewLogs(instance.name)}
+          className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors"
+        >
+          <Eye className="w-4 h-4" />
+          <span className="hidden sm:inline">Logs</span>
+        </button>
+      </div>
+    </div>
+  );
+}
