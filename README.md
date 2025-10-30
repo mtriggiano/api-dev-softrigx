@@ -33,6 +33,16 @@ Panel de control profesional para gestionar instancias Odoo y monitorear el serv
 - **Sesiones**: Control de acceso
 - **Logs de auditoría**: Todas las acciones
 
+### Integración GitHub (Nuevo) 🔗
+- **Control de versiones**: Git para custom addons
+- **Vincular cuenta GitHub**: Conectar repositorios personales
+- **Operaciones Git**: Commit, push, pull desde el panel
+- **Historial**: Ver commits y cambios
+- **Diff**: Visualizar diferencias en archivos
+- **Gestión por instancia**: Cada desarrollador su repo
+
+👉 **Ver documentación completa:** [GITHUB_INTEGRATION.md](GITHUB_INTEGRATION.md)
+
 ## 📁 Estructura del Proyecto
 
 ```
@@ -46,10 +56,14 @@ Panel de control profesional para gestionar instancias Odoo y monitorear el serv
 │   │   ├── auth.py           # Autenticación
 │   │   ├── metrics.py        # Métricas del sistema
 │   │   ├── instances.py      # Gestión de instancias
-│   │   └── logs.py           # Logs de acciones
+│   │   ├── logs.py           # Logs de acciones
+│   │   ├── backup.py         # Backups
+│   │   └── github.py         # Integración GitHub (nuevo)
 │   ├── services/              # Lógica de negocio
 │   │   ├── system_monitor.py # Monitor del sistema
-│   │   └── instance_manager.py # Gestor de instancias
+│   │   ├── instance_manager.py # Gestor de instancias
+│   │   ├── backup_manager.py  # Gestor de backups
+│   │   └── git_manager.py     # Gestor Git/GitHub (nuevo)
 │   ├── requirements.txt       # Dependencias Python
 │   ├── .env                   # Variables de entorno
 │   └── .env.example           # Ejemplo de .env
@@ -161,6 +175,21 @@ DEV_INSTANCES_FILE=/home/go/dev-instances.txt
 - `GET /api/logs?instance=&action=&hours=24` - Listar logs
 - `GET /api/logs/stats?hours=24` - Estadísticas
 
+### GitHub (Nuevo)
+- `POST /api/github/verify-token` - Verificar token de GitHub
+- `GET /api/github/repos` - Listar repositorios del usuario
+- `GET /api/github/config` - Listar configuraciones
+- `GET /api/github/config/:instance` - Obtener configuración
+- `POST /api/github/config` - Crear/actualizar configuración
+- `DELETE /api/github/config/:instance` - Eliminar configuración
+- `POST /api/github/init-repo` - Inicializar repositorio Git
+- `GET /api/github/status/:instance` - Estado del repositorio
+- `POST /api/github/commit` - Crear commit
+- `POST /api/github/push` - Push al remoto
+- `POST /api/github/pull` - Pull del remoto
+- `GET /api/github/history/:instance` - Historial de commits
+- `GET /api/github/diff/:instance` - Diff de cambios
+
 ## 🔐 Roles y Permisos
 
 ### Admin
@@ -171,6 +200,7 @@ DEV_INSTANCES_FILE=/home/go/dev-instances.txt
 - ✅ Reiniciar instancias
 - ✅ Eliminar instancias
 - ✅ Ver logs
+- ✅ Gestión GitHub (vincular, commit, push, pull)
 
 ### Developer
 - ✅ Ver dashboard y métricas
@@ -180,6 +210,7 @@ DEV_INSTANCES_FILE=/home/go/dev-instances.txt
 - ✅ Reiniciar instancias
 - ❌ Eliminar instancias
 - ✅ Ver logs
+- ✅ Gestión GitHub (vincular, commit, push, pull)
 
 ### Viewer
 - ✅ Ver dashboard y métricas
@@ -189,6 +220,7 @@ DEV_INSTANCES_FILE=/home/go/dev-instances.txt
 - ❌ Reiniciar instancias
 - ❌ Eliminar instancias
 - ✅ Ver logs
+- ❌ Gestión GitHub
 
 ## 🛠️ Comandos Útiles
 
@@ -337,6 +369,8 @@ grep CRON /var/log/syslog
 3. **Logs**: Los logs de acciones se guardan en la BD y pueden crecer. Considerar limpieza periódica
 4. **Métricas**: Se guardan cada minuto. Considerar limpieza de métricas antiguas
 5. **Permisos sudo**: El usuario `go` necesita permisos sudo para gestionar servicios systemd
+6. **GitHub Tokens**: Los tokens de acceso se almacenan en BD. En producción, considerar encriptación
+7. **Integración GitHub**: Ver [GITHUB_INTEGRATION.md](GITHUB_INTEGRATION.md) para guía completa
 
 ## 🆘 Soporte
 
@@ -348,4 +382,4 @@ Para problemas o dudas:
 
 ---
 
-**Última actualización**: 2025-10-28
+**Última actualización**: 2025-10-30

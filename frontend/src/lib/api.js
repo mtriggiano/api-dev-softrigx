@@ -131,4 +131,41 @@ export const backup = {
     api.get('/api/backup/log'),
 };
 
+export const github = {
+  verifyToken: (token) => 
+    api.post('/api/github/verify-token', { token }),
+  
+  getConfig: (instanceName) => 
+    api.get(`/api/github/config/${instanceName}`),
+  
+  createConfig: (config) => 
+    api.post('/api/github/config', config),
+  
+  initRepo: (instanceName) => 
+    api.post('/api/github/init-repo', { instance_name: instanceName }),
+  
+  getStatus: (instanceName) => 
+    api.get(`/api/github/status/${instanceName}`),
+  
+  commit: (instanceName, message, authorName, authorEmail) => 
+    api.post('/api/github/commit', { 
+      instance_name: instanceName, 
+      message, 
+      author_name: authorName, 
+      author_email: authorEmail 
+    }),
+  
+  push: (instanceName) => 
+    api.post('/api/github/push', { instance_name: instanceName }),
+  
+  pull: (instanceName) => 
+    api.post('/api/github/pull', { instance_name: instanceName }),
+  
+  getHistory: (instanceName, limit = 10) => 
+    api.get(`/api/github/history/${instanceName}?limit=${limit}`),
+  
+  getDiff: (instanceName) => 
+    api.get(`/api/github/diff/${instanceName}`),
+};
+
 export default api;

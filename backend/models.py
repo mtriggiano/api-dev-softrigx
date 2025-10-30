@@ -54,6 +54,52 @@ class ActionLog(db.Model):
             'status': self.status
         }
 
+class GitHubConfig(db.Model):
+    __tablename__ = 'github_configs'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    instance_name = db.Column(db.String(100), nullable=False)
+    
+    # GitHub OAuth
+    github_username = db.Column(db.String(100))
+    github_access_token = db.Column(db.String(255))  # Encrypted in production
+    
+    # Repository config
+    repo_owner = db.Column(db.String(100))  # Usuario/Org dueño del repo
+    repo_name = db.Column(db.String(100))   # Nombre del repositorio
+    repo_branch = db.Column(db.String(100), default='main')  # Rama principal
+    
+    # Local path
+    local_path = db.Column(db.String(500))  # Ruta a la carpeta custom addons
+    
+    # Metadata
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    is_active = db.Column(db.Boolean, default=True)
+    
+    user = db.relationship('User', backref='github_configs')
+    
+    # Unique constraint: un usuario solo puede tener una config por instancia
+    __table_args__ = (db.UniqueConstraint('user_id', 'instance_name', name='_user_instance_uc'),)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'username': self.user.username if self.user else None,
+            'instance_name': self.instance_name,
+            'github_username': self.github_username,
+            'repo_owner': self.repo_owner,
+            'repo_name': self.repo_name,
+            'repo_branch': self.repo_branch,
+            'local_path': self.local_path,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'is_active': self.is_active,
+            'has_token': bool(self.github_access_token)
+        }
+
 class MetricsHistory(db.Model):
     __tablename__ = 'metrics_history'
     

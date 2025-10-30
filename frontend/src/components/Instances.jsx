@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { instances } from '../lib/api';
-import { Server, Play, Square, Trash2, RefreshCw, Database, FileText, Plus, Eye, AlertCircle, FolderSync, Palette } from 'lucide-react';
+import { Server, Play, Square, Trash2, RefreshCw, Database, FileText, Plus, Eye, AlertCircle, FolderSync, Palette, Github } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 import Toast from './Toast';
+import GitHubModal from './GitHubModal';
 
 export default function Instances() {
   const [instanceList, setInstanceList] = useState([]);
@@ -19,6 +20,7 @@ export default function Instances() {
   const [creationLog, setCreationLog] = useState({ show: false, instanceName: '', log: '' });
   const [updateLog, setUpdateLog] = useState({ show: false, instanceName: '', action: '', log: '', completed: false });
   const [restartModal, setRestartModal] = useState({ show: false, instanceName: '', status: 'Reiniciando...' });
+  const [githubModal, setGithubModal] = useState({ show: false, instanceName: '' });
 
   useEffect(() => {
     fetchInstances();
@@ -258,6 +260,7 @@ export default function Instances() {
                   instance={instance}
                   onAction={showConfirmation}
                   onViewLogs={handleViewLogs}
+                  onGitHub={(instanceName) => setGithubModal({ show: true, instanceName })}
                   actionLoading={actionLoading}
                   isProduction={false}
                 />
@@ -480,6 +483,16 @@ export default function Instances() {
           onClose={() => setToast({ show: false, message: '', type: 'success' })}
         />
       )}
+
+      {/* Modal de GitHub */}
+      <GitHubModal
+        isOpen={githubModal.show}
+        onClose={() => setGithubModal({ show: false, instanceName: '' })}
+        instanceName={githubModal.instanceName}
+        onSuccess={() => {
+          setToast({ show: true, message: 'GitHub conectado exitosamente', type: 'success' });
+        }}
+      />
     </div>
   );
 }
@@ -508,14 +521,26 @@ function getConfirmMessage(action, instanceName) {
   return messages[action] || '¿Deseas continuar con esta acción?';
 }
 
-function InstanceCard({ instance, onAction, onViewLogs, actionLoading, isProduction }) {
+function InstanceCard({ instance, onAction, onViewLogs, onGitHub, actionLoading, isProduction }) {
   const statusColor = instance.status === 'active' ? 'text-green-600' : 'text-red-600';
   const statusBg = instance.status === 'active' ? 'bg-green-100 dark:bg-green-900' : 'bg-red-100 dark:bg-red-900';
 
   return (
-    <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-shadow">
+    <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-shadow relative">
+      {/* Botón GitHub en esquina superior derecha - solo para dev */}
+      {!isProduction && (
+        <button
+          onClick={() => onGitHub(instance.name)}
+          title="Conectar con GitHub para control de versiones"
+          className="absolute top-4 right-4 flex items-center gap-2 px-3 py-1.5 text-sm text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors border border-gray-300 dark:border-gray-600"
+        >
+          <Github className="w-4 h-4" />
+          <span className="hidden sm:inline">GitHub</span>
+        </button>
+      )}
+      
       {/* Header con info */}
-      <div className="flex items-start gap-3 mb-4">
+      <div className="flex items-start gap-3 mb-4 pr-24">
         <div className={`${statusBg} p-2 rounded-lg flex-shrink-0`}>
           <Server className={`w-6 h-6 ${statusColor}`} />
         </div>
