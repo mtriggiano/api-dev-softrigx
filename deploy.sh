@@ -41,11 +41,46 @@ curl -s -X POST "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/dns_reco
 
 echo "✅ DNS configurado"
 
-# 2. Instalar dependencias del sistema si es necesario
+# 2. Verificar dependencias del sistema
 echo "📦 Verificando dependencias del sistema..."
-command -v python3.12 >/dev/null 2>&1 || { echo "❌ Python 3.12 no encontrado"; exit 1; }
-command -v node >/dev/null 2>&1 || { echo "❌ Node.js no encontrado. Instalando..."; curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-get install -y nodejs; }
-command -v nginx >/dev/null 2>&1 || { echo "❌ Nginx no encontrado"; exit 1; }
+
+# Dependencias críticas
+MISSING_DEPS=""
+for cmd in python3.12 node npm nginx psql pg_dump git jq certbot; do
+    if ! command -v $cmd >/dev/null 2>&1; then
+        echo "❌ $cmd no está instalado"
+        MISSING_DEPS="$MISSING_DEPS $cmd"
+    else
+        echo "✅ $cmd encontrado"
+    fi
+done
+
+if [ -n "$MISSING_DEPS" ]; then
+    echo ""
+    echo "❌ Dependencias faltantes:$MISSING_DEPS"
+    echo ""
+    echo "Para instalarlas en Ubuntu/Debian:"
+    echo "sudo apt update"
+    echo "sudo apt install -y python3.12 nodejs npm nginx postgresql-client git jq certbot python3-certbot-nginx"
+    echo ""
+    read -p "¿Deseas continuar de todos modos? (s/n): " CONTINUE
+    if [ "$CONTINUE" != "s" ] && [ "$CONTINUE" != "S" ]; then
+        exit 1
+    fi
+fi
+
+# Verificar PostgreSQL
+echo "🗄️ Verificando PostgreSQL..."
+if sudo systemctl status postgresql >/dev/null 2>&1; then
+    echo "✅ PostgreSQL está corriendo"
+else
+    echo "⚠️ PostgreSQL no está corriendo"
+    echo "Intentando iniciar PostgreSQL..."
+    sudo systemctl start postgresql || {
+        echo "❌ No se pudo iniciar PostgreSQL"
+        exit 1
+    }
+fi
 
 # 3. Configurar backend
 echo "🐍 Configurando backend..."
@@ -76,15 +111,59 @@ fi
 
 # Crear base de datos PostgreSQL
 echo "🗄️ Configurando base de datos..."
-DB_NAME="server_panel"
-DB_USER="go"
+DB_NAME="${DB_NAME_PANEL:-server_panel}"
+DB_USER="${DB_USER:-go}"
+
+# Verificar/crear usuario PostgreSQL
+echo "👤 Verificando usuario PostgreSQL '$DB_USER'..."
+if sudo -u postgres psql -c "\du" | grep -q "$DB_USER"; then
+  echo "✅ Usuario PostgreSQL existe"
+else
+  echo "📦 Creando usuario PostgreSQL '$DB_USER'..."
+  sudo -u postgres createuser -s "$DB_USER" || {
+    echo "❌ No se pudo crear el usuario PostgreSQL"
+    exit 1
+  }
+  # Establecer contraseña si está configurada
+  if [ -n "$DB_PASSWORD" ]; then
+    sudo -u postgres psql -c "ALTER USER $DB_USER WITH PASSWORD '$DB_PASSWORD';"
+  fi
+  echo "✅ Usuario PostgreSQL creado"
+fi
 
 # Verificar si la BD ya existe
 if sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw "$DB_NAME"; then
   echo "✅ Base de datos ya existe"
 else
   echo "📦 Creando base de datos..."
-  sudo -u postgres createdb "$DB_NAME" -O "$DB_USER" --encoding='UTF8'
+  sudo -u postgres createdb "$DB_NAME" -O "$DB_USER" --encoding='UTF8' || {
+    echo "❌ No se pudo crear la base de datos"
+    exit 1
+  }
+  echo "✅ Base de datos creada"
+fi
+
+# Crear directorios necesarios
+echo "📁 Creando estructura de directorios..."
+mkdir -p "$API_DIR/logs"
+mkdir -p "$API_DIR/data"
+mkdir -p "${BACKUPS_PATH:-/home/go/backups}"
+mkdir -p "${PROD_ROOT:-/home/go/apps/production/odoo}"
+mkdir -p "${DEV_ROOT:-/home/go/apps/develop/odoo}"
+touch "$API_DIR/data/puertos_ocupados_odoo.txt"
+touch "$API_DIR/data/dev-instances.txt"
+chmod 755 "$API_DIR/logs" "$API_DIR/data"
+echo "✅ Directorios creados"
+
+# Hacer scripts ejecutables
+echo "🔧 Configurando permisos de scripts..."
+if [ -d "$API_DIR/scripts/odoo" ]; then
+    chmod +x "$API_DIR/scripts/odoo/"*.sh 2>/dev/null || true
+    echo "✅ Scripts de Odoo configurados"
+fi
+if [ -d "$API_DIR/scripts/utils" ]; then
+    chmod +x "$API_DIR/scripts/utils/"*.sh 2>/dev/null || true
+    echo "✅ Scripts de utilidades configurados"
 fi
 
 # Inicializar base de datos
@@ -96,16 +175,42 @@ echo "⚙️ Creando servicio systemd..."
 sudo tee /etc/systemd/system/server-panel-api.service > /dev/null <<EOF
 [Unit]
 Description=Server Panel API
-After=network.target
+After=network.target postgresql.service
+Wants=postgresql.service
 
 [Service]
 Type=simple
 User=$USER
 WorkingDirectory=$BACKEND_DIR
 Environment="PATH=$BACKEND_DIR/venv/bin"
-ExecStart=$BACKEND_DIR/venv/bin/gunicorn -w 4 -b 127.0.0.1:5000 wsgi:app
+
+# Configuración de Gunicorn para archivos grandes y operaciones largas
+# -w 4: 4 workers (ajustar según CPU)
+# -b 127.0.0.1:5000: bind a localhost
+# --timeout 600: timeout de 10 minutos para operaciones largas (backups)
+# --max-requests 1000: reiniciar workers después de 1000 requests
+# --max-requests-jitter 50: jitter para evitar reinicio simultáneo
+# --limit-request-line 8190: límite de línea de request
+# --limit-request-field_size 8190: límite de campo de header
+ExecStart=$BACKEND_DIR/venv/bin/gunicorn \\
+    -w 4 \\
+    -b 127.0.0.1:5000 \\
+    --timeout 600 \\
+    --max-requests 1000 \\
+    --max-requests-jitter 50 \\
+    --limit-request-line 8190 \\
+    --limit-request-field_size 8190 \\
+    --access-logfile /home/$USER/api-dev/logs/gunicorn-access.log \\
+    --error-logfile /home/$USER/api-dev/logs/gunicorn-error.log \\
+    --log-level info \\
+    wsgi:app
+
 Restart=always
 RestartSec=10
+
+# Límites de recursos
+LimitNOFILE=65536
+LimitNPROC=4096
 
 [Install]
 WantedBy=multi-user.target
@@ -145,6 +250,11 @@ server {
     listen 80;
     server_name $DOMAIN;
 
+    # Permitir archivos grandes (backups hasta 1GB)
+    client_max_body_size 1024M;
+    client_body_timeout 600s;
+    client_header_timeout 600s;
+
     # Frontend (archivos estáticos)
     location / {
         root $FRONTEND_DIR/dist;
@@ -159,7 +269,15 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_http_version 1.1;
-        proxy_read_timeout 300s;
+        
+        # Timeouts para operaciones largas (backups, restauración)
+        proxy_connect_timeout 600s;
+        proxy_send_timeout 600s;
+        proxy_read_timeout 600s;
+        
+        # Buffering para archivos grandes
+        proxy_buffering off;
+        proxy_request_buffering off;
     }
 
     # Health check
