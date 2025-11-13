@@ -95,6 +95,16 @@ for port in $(seq 2000 3000); do
 done
 [[ -z "$PORT" ]] && echo "❌ No se encontró un puerto libre. Abortando." && exit 1
 
+# 🔎 Buscar EVENTED_PORT (gevent) libre para WebSocket/Longpolling
+for eport in $(seq 8072 8999); do
+  if ! grep -q "^$eport$" "$PUERTOS_FILE" 2>/dev/null && ! lsof -iTCP:$eport -sTCP:LISTEN -t >/dev/null; then
+    EVENTED_PORT=$eport
+    echo "$EVENTED_PORT" >> "$PUERTOS_FILE"
+    break
+  fi
+done
+[[ -z "$EVENTED_PORT" ]] && echo "❌ No se encontró un EVENTED_PORT libre. Abortando." && exit 1
+
 # Configurar dominio según tipo de instancia
 if [[ "$USE_ROOT_DOMAIN" == true ]]; then
   DOMAIN="$CF_ZONE_NAME"
@@ -114,6 +124,7 @@ APP_DIR="$BASE_DIR"
 echo "🌐 Dominio: $DOMAIN"
 echo "📁 Carpeta base: $BASE_DIR"
 echo "🔌 Puerto: $PORT"
+echo "🧲 Evented (gevent) port: $EVENTED_PORT"
 
 # 4. DNS
 echo "🌍 IP pública configurada: $PUBLIC_IP"
@@ -187,6 +198,7 @@ $PYTHON -m venv venv
 source venv/bin/activate
 pip install --upgrade pip wheel
 pip install -r odoo-server/requirements.txt
+pip install gevent greenlet
 echo "📦 Instalando dependencias adicionales comunes..."
 pip install phonenumbers
 
@@ -210,7 +222,9 @@ http_port = $PORT
 http_interface = 127.0.0.1
 proxy_mode = True
 admin_passwd = $ADMIN_PASSWORD
-workers = 0
+server_wide_modules = web,base,bus
+gevent_port = $EVENTED_PORT
+workers = 2
 max_cron_threads = 1
 db_maxconn = 8
 EOF
@@ -290,7 +304,7 @@ fi
 
 # 7. Nginx y SSL
 # Configurar SSL según la elección del usuario (ya preguntado al inicio)
-configure_ssl "$DOMAIN" "$INSTANCE_NAME" "$PORT" "$SSL_METHOD"
+configure_ssl "$DOMAIN" "$INSTANCE_NAME" "$PORT" "$SSL_METHOD" "$EVENTED_PORT"
 
 echo "📄 Generando archivo de información de la instancia..."
 # 8. Info
@@ -298,6 +312,7 @@ cat > "$INFO_FILE" <<EOFINFO
 🔧 Instancia: $INSTANCE_NAME
 🌍 Dominio: https://$DOMAIN
 🛠️ Puerto: $PORT
+🧲 Evented port: $EVENTED_PORT
 🗄️ Base de datos: $INSTANCE_NAME
 👤 Usuario DB: $DB_USER
 🔑 Contraseña DB: $DB_PASSWORD

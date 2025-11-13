@@ -92,6 +92,18 @@ if [[ -z "$PORT" ]]; then
   echo "✅ Puerto asignado: $PORT"
 fi
 
+# Buscar puerto libre para evented/gevent (longpolling/websocket)
+echo "🔍 Buscando puerto evented (gevent) libre..."
+EVENTED_PORT=""
+for ep in {8072..8999}; do
+  if ! lsof -iTCP:$ep -sTCP:LISTEN -t >/dev/null; then
+    EVENTED_PORT=$ep
+    break
+  fi
+done
+[[ -z "$EVENTED_PORT" ]] && echo "❌ No hay puerto evented libre (8072-8999)." && exit 1
+echo "✅ Evented port asignado: $EVENTED_PORT"
+
 # Configurar dominio según tipo de instancia
 if [[ "$USE_ROOT_DOMAIN" == true ]]; then
   DOMAIN="$CF_ZONE_NAME"
@@ -223,7 +235,7 @@ pip install --upgrade pip wheel
 echo "📦 Instalando requerimientos Python..."
 pip install -r "$BASE_DIR/odoo-server/requirements.txt"
 echo "📦 Instalando dependencias adicionales comunes..."
-pip install phonenumbers qrcode pillow
+pip install phonenumbers qrcode pillow gevent greenlet
 
 echo "🗑️ Limpiando base de datos existente si existe..."
 sudo -u postgres dropdb "$INSTANCE_NAME" 2>/dev/null || true
@@ -245,9 +257,11 @@ http_port = $PORT
 http_interface = 127.0.0.1
 proxy_mode = True
 admin_passwd = $ADMIN_PASSWORD
-workers = 0
+workers = 2
 max_cron_threads = 1
 db_maxconn = 8
+server_wide_modules = web,base,bus
+gevent_port = $EVENTED_PORT
 EOF
 
 touch "$ODOO_LOG"
@@ -325,7 +339,7 @@ fi
 
 # 7. Nginx y SSL
 # Configurar SSL según la elección del usuario (ya preguntado al inicio)
-configure_ssl "$DOMAIN" "$INSTANCE_NAME" "$PORT" "$SSL_METHOD"
+configure_ssl "$DOMAIN" "$INSTANCE_NAME" "$PORT" "$SSL_METHOD" "$EVENTED_PORT"
 
 
 echo "📄 Generando archivo de información de la instancia..."

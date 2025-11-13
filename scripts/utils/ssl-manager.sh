@@ -8,6 +8,7 @@ setup_cloudflare_ssl() {
     local DOMAIN=$1
     local INSTANCE_NAME=$2
     local PORT=$3
+    local EVENTED_PORT=${4:-8072}
     
     echo "☁️ Configurando SSL con Cloudflare Origin Certificate..."
     
@@ -33,7 +34,7 @@ setup_cloudflare_ssl() {
     if [[ -f "$CERT_FILE" && -f "$KEY_FILE" ]]; then
         if sudo openssl x509 -checkend 2592000 -noout -in "$CERT_FILE" 2>/dev/null; then
             echo "✅ Certificado Cloudflare válido encontrado (expira en más de 30 días)"
-            configure_nginx_cloudflare_ssl "$DOMAIN" "$INSTANCE_NAME" "$PORT" "$CERT_FILE" "$KEY_FILE"
+            configure_nginx_cloudflare_ssl "$DOMAIN" "$INSTANCE_NAME" "$PORT" "$CERT_FILE" "$KEY_FILE" "$EVENTED_PORT"
             return 0
         else
             echo "⚠️  Certificado encontrado pero expira pronto"
@@ -82,6 +83,7 @@ configure_nginx_cloudflare_ssl() {
     local PORT=$3
     local CERT_FILE=$4
     local KEY_FILE=$5
+    local EVENTED_PORT=${6:-8072}
     
     echo "🔧 Configurando Nginx con SSL de Cloudflare..."
     
@@ -123,21 +125,41 @@ server {
 
     location / {
         proxy_pass http://127.0.0.1:$PORT;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection \$connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
         proxy_http_version 1.1;
         proxy_read_timeout 720s;
+    }
+
+    location /websocket {
+        proxy_pass http://127.0.0.1:$EVENTED_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection upgrade;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 86400;
+    }
+
+    location /longpolling {
+        proxy_pass http://127.0.0.1:$EVENTED_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection upgrade;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 86400;
     }
 }
 EOF
     
     sudo ln -sf /etc/nginx/sites-available/$INSTANCE_NAME /etc/nginx/sites-enabled/$INSTANCE_NAME
     
-    echo "✅ Configuración Nginx creada"
+    echo " Configuración Nginx creada"
 }
 
 # Función para configurar SSL con Let's Encrypt (Certbot)
@@ -145,22 +167,23 @@ setup_letsencrypt_ssl() {
     local DOMAIN=$1
     local INSTANCE_NAME=$2
     local PORT=$3
+    local EVENTED_PORT=${4:-8072}
     
-    echo "🔐 Configurando SSL con Let's Encrypt (Certbot)..."
+    echo " Configurando SSL con Let's Encrypt (Certbot)..."
     
     # Verificar si el certificado existe y es válido
     SSL_CERT_EXISTS=false
     if [ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
         if sudo openssl x509 -checkend 86400 -noout -in "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" 2>/dev/null; then
             SSL_CERT_EXISTS=true
-            echo "✅ Certificado Let's Encrypt válido encontrado para $DOMAIN"
+            echo " Certificado Let's Encrypt válido encontrado para $DOMAIN"
         else
-            echo "⚠️  Certificado encontrado pero expira pronto o es inválido"
+            echo "  Certificado encontrado pero expira pronto o es inválido"
         fi
     fi
     
     if [ "$SSL_CERT_EXISTS" = false ]; then
-        echo "🚫 Certificado no encontrado. Creando configuración HTTP temporal..."
+        echo " Certificado no encontrado. Creando configuración HTTP temporal..."
         
         # Crear configuración HTTP temporal
         sudo tee /etc/nginx/sites-available/$INSTANCE_NAME > /dev/null <<EOF
@@ -178,38 +201,59 @@ server {
 
     location / {
         proxy_pass http://127.0.0.1:$PORT;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
         proxy_http_version 1.1;
         proxy_read_timeout 720s;
+    }
+
+    location /websocket {
+        proxy_pass http://127.0.0.1:$EVENTED_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection upgrade;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 86400;
+    }
+
+    location /longpolling {
+        proxy_pass http://127.0.0.1:$EVENTED_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection upgrade;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 86400;
     }
 }
 EOF
         
         sudo ln -sf /etc/nginx/sites-available/$INSTANCE_NAME /etc/nginx/sites-enabled/$INSTANCE_NAME
         
-        echo "🔄 Recargando Nginx con configuración HTTP..."
+        echo " Recargando Nginx con configuración HTTP..."
         sudo nginx -t && sudo systemctl reload nginx || sudo systemctl start nginx
         
-        echo "📜 Obteniendo certificado SSL con Certbot..."
-        echo "⚠️  NOTA: Si alcanzaste el límite de tasa de Let's Encrypt (5 certs/semana),"
+        echo " Obteniendo certificado SSL con Certbot..."
+        echo "  NOTA: Si alcanzaste el límite de tasa de Let's Encrypt (5 certs/semana),"
         echo "   espera hasta que expire el límite o usa Cloudflare SSL."
         
         if sudo certbot --nginx -d $DOMAIN --non-interactive --agree-tos -m admin@$DOMAIN --redirect; then
-            echo "✅ Certificado SSL obtenido y configurado automáticamente por Certbot"
+            echo " Certificado SSL obtenido. Actualizando configuración Nginx con WebSocket/Longpolling..."
+            configure_nginx_letsencrypt_ssl "$DOMAIN" "$INSTANCE_NAME" "$PORT" "$EVENTED_PORT"
             return 0
         else
-            echo "❌ Error al obtener certificado SSL."
+            echo " Error al obtener certificado SSL."
             echo "   El sitio quedará configurado con HTTP en el puerto 80."
             echo "   Para obtener SSL manualmente más tarde, ejecuta:"
             echo "   sudo certbot --nginx -d $DOMAIN"
             return 1
         fi
     else
-        echo "✅ Reutilizando certificado existente..."
-        configure_nginx_letsencrypt_ssl "$DOMAIN" "$INSTANCE_NAME" "$PORT"
+        echo " Reutilizando certificado existente..."
+        configure_nginx_letsencrypt_ssl "$DOMAIN" "$INSTANCE_NAME" "$PORT" "$EVENTED_PORT"
         return 0
     fi
 }
@@ -219,11 +263,12 @@ configure_nginx_letsencrypt_ssl() {
     local DOMAIN=$1
     local INSTANCE_NAME=$2
     local PORT=$3
+    local EVENTED_PORT=${4:-8072}
     
-    echo "🔧 Configurando Nginx con SSL de Let's Encrypt..."
+    echo " Configurando Nginx con SSL de Let's Encrypt..."
     
     sudo tee /etc/nginx/sites-available/$INSTANCE_NAME > /dev/null <<EOF
-map \$http_upgrade \$connection_upgrade {
+map $http_upgrade $connection_upgrade {
     default upgrade;
     '' close;
 }
@@ -241,12 +286,12 @@ server {
 
     location / {
         proxy_pass http://127.0.0.1:$PORT;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection \$connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
         proxy_http_version 1.1;
         proxy_read_timeout 720s;
     }
@@ -256,11 +301,31 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
     include /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    location /websocket {
+        proxy_pass http://127.0.0.1:$EVENTED_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection upgrade;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 86400;
+    }
+
+    location /longpolling {
+        proxy_pass http://127.0.0.1:$EVENTED_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection upgrade;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 86400;
+    }
 }
 
 server {
-    if (\$host = $DOMAIN) {
-        return 301 https://\$host\$request_uri;
+    if ($host = $DOMAIN) {
+        return 301 https://$host$request_uri;
     }
 
     listen 80;
@@ -271,48 +336,10 @@ EOF
     
     sudo ln -sf /etc/nginx/sites-available/$INSTANCE_NAME /etc/nginx/sites-enabled/$INSTANCE_NAME
     
-    echo "🔄 Recargando Nginx con configuración HTTPS..."
+    echo " Recargando Nginx con configuración HTTPS..."
     sudo nginx -t && sudo systemctl reload nginx
     
-    echo "✅ Configuración Nginx creada con SSL"
-}
-
-# Función principal para configurar SSL
-configure_ssl() {
-    local DOMAIN=$1
-    local INSTANCE_NAME=$2
-    local PORT=$3
-    local SSL_METHOD=$4
-    
-    echo ""
-    echo "🔐 ============================================"
-    echo "   CONFIGURACIÓN SSL"
-    echo "============================================"
-    echo ""
-    
-    # Eliminar configuración anterior si existe
-    [[ -L "/etc/nginx/sites-enabled/$INSTANCE_NAME" ]] && sudo rm -f "/etc/nginx/sites-enabled/$INSTANCE_NAME"
-    
-    case $SSL_METHOD in
-        1|certbot|letsencrypt)
-            setup_letsencrypt_ssl "$DOMAIN" "$INSTANCE_NAME" "$PORT"
-            ;;
-        2|cloudflare|cf)
-            setup_cloudflare_ssl "$DOMAIN" "$INSTANCE_NAME" "$PORT"
-            ;;
-        3|none|skip)
-            echo "⚠️  Omitiendo configuración SSL. Configurando solo HTTP..."
-            configure_http_only "$DOMAIN" "$INSTANCE_NAME" "$PORT"
-            ;;
-        *)
-            echo "❌ Método SSL no válido: $SSL_METHOD"
-            return 1
-            ;;
-    esac
-    
-    echo ""
-    echo "✅ Nginx configurado correctamente para $DOMAIN"
-    echo ""
+    echo " Configuración Nginx creada con SSL"
 }
 
 # Función para configurar solo HTTP (sin SSL)
@@ -320,10 +347,16 @@ configure_http_only() {
     local DOMAIN=$1
     local INSTANCE_NAME=$2
     local PORT=$3
+    local EVENTED_PORT=${4:-8072}
     
-    echo "🌐 Configurando Nginx solo con HTTP..."
+    echo " Configurando Nginx solo con HTTP..."
     
     sudo tee /etc/nginx/sites-available/$INSTANCE_NAME > /dev/null <<EOF
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    '' close;
+}
+
 server {
     listen 80;
     server_name $DOMAIN;
@@ -338,18 +371,83 @@ server {
 
     location / {
         proxy_pass http://127.0.0.1:$PORT;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
         proxy_http_version 1.1;
         proxy_read_timeout 720s;
+    }
+
+    location /websocket {
+        proxy_pass http://127.0.0.1:$EVENTED_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection upgrade;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 86400;
+    }
+
+    location /longpolling {
+        proxy_pass http://127.0.0.1:$EVENTED_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection upgrade;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 86400;
     }
 }
 EOF
     
     sudo ln -sf /etc/nginx/sites-available/$INSTANCE_NAME /etc/nginx/sites-enabled/$INSTANCE_NAME
     
+    echo " Recargando Nginx..."
+    sudo nginx -t && sudo systemctl reload nginx
+    
+    echo " Configuración HTTP creada"
+}
+
+# Función principal para configurar SSL
+configure_ssl() {
+    local DOMAIN=$1
+    local INSTANCE_NAME=$2
+    local PORT=$3
+    local SSL_METHOD=$4
+    local EVENTED_PORT=${5:-8072}
+    
+    echo ""
+    echo " ============================================"
+    echo "   CONFIGURACIÓN SSL"
+    echo "============================================"
+    echo ""
+    
+    # Eliminar configuración anterior si existe
+    [[ -L "/etc/nginx/sites-enabled/$INSTANCE_NAME" ]] && sudo rm -f "/etc/nginx/sites-enabled/$INSTANCE_NAME"
+    
+    case $SSL_METHOD in
+        1|certbot|letsencrypt)
+            setup_letsencrypt_ssl "$DOMAIN" "$INSTANCE_NAME" "$PORT" "$EVENTED_PORT"
+            ;;
+        2|cloudflare|cf)
+            setup_cloudflare_ssl "$DOMAIN" "$INSTANCE_NAME" "$PORT" "$EVENTED_PORT"
+            ;;
+        3|none|skip)
+            echo " Omitiendo configuración SSL. Configurando solo HTTP..."
+            configure_http_only "$DOMAIN" "$INSTANCE_NAME" "$PORT" "$EVENTED_PORT"
+            ;;
+        *)
+            echo " Método SSL no válido: $SSL_METHOD"
+            return 1
+            ;;
+    esac
+    
+    echo ""
+    echo " Nginx configurado correctamente para $DOMAIN"
+    echo ""
     echo "🔄 Recargando Nginx..."
     sudo nginx -t && sudo systemctl reload nginx
     

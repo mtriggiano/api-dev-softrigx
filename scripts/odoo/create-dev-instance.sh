@@ -115,6 +115,18 @@ done
 [[ -z "$PORT" ]] && echo "❌ No hay puerto libre en rango 3100-3200." && exit 1
 echo "✅ Puerto asignado: $PORT"
 
+# Buscar puerto libre para evented/gevent (longpolling/websocket)
+echo "🔍 Buscando puerto evented (gevent) libre..."
+EVENTED_PORT=""
+for ep in {8072..8999}; do
+  if ! lsof -iTCP:$ep -sTCP:LISTEN -t >/dev/null; then
+    EVENTED_PORT=$ep
+    break
+  fi
+done
+[[ -z "$EVENTED_PORT" ]] && echo "❌ No hay puerto evented libre (8072-8999)." && exit 1
+echo "✅ Evented port asignado: $EVENTED_PORT"
+
 SERVICE="/etc/systemd/system/odoo19e-$INSTANCE_NAME.service"
 ODOO_CONF="$BASE_DIR/odoo.conf"
 ODOO_LOG="$BASE_DIR/odoo.log"
@@ -153,7 +165,7 @@ pip install --upgrade pip wheel
 echo "📦 Instalando requerimientos Python..."
 pip install -r "$BASE_DIR/odoo-server/requirements.txt"
 echo "📦 Instalando dependencias adicionales comunes..."
-pip install phonenumbers
+pip install phonenumbers gevent greenlet
 
 # Clonar base de datos desde producción
 echo "🗄️  Clonando base de datos desde producción..."
@@ -210,7 +222,7 @@ http_port = $PORT
 http_interface = 127.0.0.1
 proxy_mode = True
 admin_passwd = $ADMIN_PASSWORD
-workers = 0
+workers = 2
 max_cron_threads = 1
 db_maxconn = 8
 
@@ -220,6 +232,8 @@ limit_time_cpu = 600
 limit_time_real = 1200
 limit_memory_soft = 2147483648
 limit_memory_hard = 2684354560
+server_wide_modules = web,base,bus
+gevent_port = $EVENTED_PORT
 EOF
 
 touch "$ODOO_LOG"
@@ -290,6 +304,26 @@ if [ ! -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
         proxy_http_version 1.1;
         proxy_read_timeout 720s;
     }
+
+    location /websocket {
+        proxy_pass http://127.0.0.1:$EVENTED_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection upgrade;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 86400;
+    }
+
+    location /longpolling {
+        proxy_pass http://127.0.0.1:$EVENTED_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection upgrade;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 86400;
+    }
 }" | sudo tee /etc/nginx/sites-available/$INSTANCE_NAME > /dev/null
     
     sudo ln -s /etc/nginx/sites-available/$INSTANCE_NAME /etc/nginx/sites-enabled/$INSTANCE_NAME
@@ -324,6 +358,26 @@ server {
         proxy_set_header Connection \$connection_upgrade;
         proxy_http_version 1.1;
         proxy_read_timeout 720s;
+    }
+
+    location /websocket {
+        proxy_pass http://127.0.0.1:$EVENTED_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection upgrade;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 86400;
+    }
+
+    location /longpolling {
+        proxy_pass http://127.0.0.1:$EVENTED_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection upgrade;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 86400;
     }
 
     listen 443 ssl;
