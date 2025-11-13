@@ -71,7 +71,7 @@ setup_cloudflare_ssl() {
     echo ""
     
     # Configurar Nginx con SSL (aunque el cert sea temporal)
-    configure_nginx_cloudflare_ssl "$DOMAIN" "$INSTANCE_NAME" "$PORT" "$CERT_FILE" "$KEY_FILE"
+    configure_nginx_cloudflare_ssl "$DOMAIN" "$INSTANCE_NAME" "$PORT" "$CERT_FILE" "$KEY_FILE" "$EVENTED_PORT"
     
     return 0
 }
@@ -89,11 +89,6 @@ configure_nginx_cloudflare_ssl() {
     
     # Crear configuración Nginx con SSL
     sudo tee /etc/nginx/sites-available/$INSTANCE_NAME > /dev/null <<EOF
-map \$http_upgrade \$connection_upgrade {
-    default upgrade;
-    '' close;
-}
-
 server {
     listen 80;
     server_name $DOMAIN;
@@ -129,8 +124,6 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
         proxy_http_version 1.1;
         proxy_read_timeout 720s;
     }
@@ -140,7 +133,7 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection upgrade;
+        proxy_set_header Connection "upgrade";
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 86400;
     }
@@ -150,7 +143,7 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection upgrade;
+        proxy_set_header Connection "upgrade";
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 86400;
     }
@@ -268,11 +261,6 @@ configure_nginx_letsencrypt_ssl() {
     echo " Configurando Nginx con SSL de Let's Encrypt..."
     
     sudo tee /etc/nginx/sites-available/$INSTANCE_NAME > /dev/null <<EOF
-map $http_upgrade $connection_upgrade {
-    default upgrade;
-    '' close;
-}
-
 server {
     server_name $DOMAIN;
 
@@ -290,8 +278,6 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
         proxy_http_version 1.1;
         proxy_read_timeout 720s;
     }
@@ -352,11 +338,6 @@ configure_http_only() {
     echo " Configurando Nginx solo con HTTP..."
     
     sudo tee /etc/nginx/sites-available/$INSTANCE_NAME > /dev/null <<EOF
-map $http_upgrade $connection_upgrade {
-    default upgrade;
-    '' close;
-}
-
 server {
     listen 80;
     server_name $DOMAIN;
@@ -375,8 +356,6 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
         proxy_http_version 1.1;
         proxy_read_timeout 720s;
     }
