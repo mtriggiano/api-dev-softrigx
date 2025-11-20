@@ -42,12 +42,13 @@ SSL_METHOD_PARAM="$2"  # Opcional: 1=letsencrypt, 2=cloudflare, 3=http
 if [[ -z "$RAW_NAME" ]]; then echo "❌ Debes pasar el nombre de la instancia."; exit 1; fi
 INSTANCE=$(echo "$RAW_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/ /-/g')
 
-# Las instancias de producción siempre usan el dominio raíz
-# El nombre de la instancia se usa solo para identificación interna
-INSTANCE_NAME="$INSTANCE"
-USE_ROOT_DOMAIN=true
+# IMPORTANTE: Las instancias de producción SIEMPRE usan SUBDOMINIOS
+# NUNCA se usa el dominio raíz para proteger el dominio principal
+INSTANCE_NAME="prod-$INSTANCE"
+USE_ROOT_DOMAIN=false
+SUBDOMAIN="$INSTANCE.$CF_ZONE_NAME"
 
-echo "ℹ️  Nota: Esta instancia usará el dominio raíz: $CF_ZONE_NAME"
+echo "ℹ️  Nota: Esta instancia usará el subdominio: $SUBDOMAIN"
 
 LOG="/tmp/odoo-create-$INSTANCE_NAME.log"
 # Redirigir salida tanto a pantalla como a log
