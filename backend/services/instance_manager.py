@@ -270,14 +270,16 @@ class InstanceManager:
             
             # Ejecutar script en background desacoplado del proceso padre
             # Argumentos: nombre, version, edition, ssl_method
-            with open(log_file_path, 'w') as log_file:
-                process = subprocess.Popen(
-                    ['/bin/bash', script_path, name, version, edition, ssl_arg],
-                    stdout=log_file,
-                    stderr=subprocess.STDOUT,
-                    start_new_session=True,
-                    text=True
-                )
+            # IMPORTANTE: NO usar 'with' para que el archivo permanezca abierto
+            log_file = open(log_file_path, 'w', buffering=1)  # Line buffering
+            process = subprocess.Popen(
+                ['/bin/bash', script_path, name, version, edition, ssl_arg],
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+                text=True
+            )
+            # No cerrar log_file - el proceso hijo lo necesita abierto
             
             logger.info(f"Production instance creation started: {instance_name} (Odoo {version} {edition})")
             
