@@ -37,6 +37,8 @@ PUBLIC_IP="${PUBLIC_IP}"
 
 # 2. Instancia
 RAW_NAME="$1"
+SSL_METHOD_PARAM="$2"  # Opcional: 1=letsencrypt, 2=cloudflare, 3=http
+
 if [[ -z "$RAW_NAME" ]]; then echo "❌ Debes pasar el nombre de la instancia."; exit 1; fi
 INSTANCE=$(echo "$RAW_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/ /-/g')
 
@@ -54,10 +56,17 @@ exec > >(tee -a "$LOG") 2>&1
 echo "🚀 Iniciando creación de instancia Odoo: $INSTANCE_NAME"
 echo ""
 
-# Preguntar método SSL ANTES de empezar
-SSL_METHOD=$(prompt_ssl_method)
-echo ""
-echo "✅ Método SSL seleccionado. Continuando con la creación..."
+# Determinar método SSL
+if [[ -n "$SSL_METHOD_PARAM" ]]; then
+    # Modo no-interactivo: usar parámetro
+    SSL_METHOD="$SSL_METHOD_PARAM"
+    echo "✅ Método SSL seleccionado: $SSL_METHOD"
+else
+    # Modo interactivo: preguntar
+    SSL_METHOD=$(prompt_ssl_method)
+    echo ""
+    echo "✅ Método SSL seleccionado. Continuando con la creación..."
+fi
 echo ""
 
 # Validar nombre
