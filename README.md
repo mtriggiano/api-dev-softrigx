@@ -1,18 +1,19 @@
-# 🖥️ API-DEV - Sistema de Gestión de Instancias Odoo
+# 🖥️ API-DEV - Sistema de Gestión Multi-Instancia Odoo
 
-**Sistema profesional para gestionar instancias Odoo y monitorear el servidor Ubuntu**
+**Sistema profesional para gestionar múltiples instancias Odoo (producción y desarrollo) con backups automatizados**
 
-⚠️ **IMPORTANTE**: Este proyecto ha sido refactorizado para facilitar el despliegue en nuevos entornos. Todas las configuraciones sensibles ahora se manejan mediante variables de entorno.
+⚠️ **IMPORTANTE**: Sistema completamente refactorizado con soporte multi-instancia de producción y sistema de backups V2.
 
 ---
 
-## 🆕 Versión 2.0 - Refactorizada
+## 🆕 Versión 3.0 - Multi-Instancia + Backups V2
 
-✅ **Configuración centralizada** - Todo en archivo `.env`  
-✅ **Despliegue automatizado** - Script `quickstart.sh` interactivo  
-✅ **Seguridad mejorada** - Sin credenciales hardcodeadas  
-✅ **Estructura organizada** - Proyecto completamente modular  
-✅ **Documentación completa** - Guías paso a paso  
+✅ **Multi-Instancia de Producción** - Múltiples clientes en el mismo servidor  
+✅ **Backups V2** - Sistema de backups por instancia con UI moderna  
+✅ **Upload de Backups** - Drag & drop con progress tracking  
+✅ **Gestión Completa** - Crear, eliminar, restaurar instancias  
+✅ **Protección de Dominio** - softrigx.com protegido, subdominios automáticos  
+✅ **Documentación Completa** - Guías detalladas de uso  
 
 ### 📊 Estado del Sistema
 ```bash
@@ -43,6 +44,25 @@ source scripts/utils/validate-env.sh --full
 
 ## 🚀 Características
 
+### 🏢 Multi-Instancia de Producción (NUEVO)
+- **Múltiples clientes**: Cada cliente su propia instancia Odoo
+- **Subdominios automáticos**: cliente1.softrigx.com, cliente2.softrigx.com
+- **Dominio protegido**: softrigx.com nunca se modifica
+- **Dominios personalizados**: Opción de usar dominio del cliente
+- **SSL automático**: Let's Encrypt para cada instancia
+- **Gestión independiente**: Backups, logs y configuración por instancia
+- **Tracking**: Registro de todas las instancias activas
+
+### 💾 Sistema de Backups V2 (NUEVO)
+- **Backups por instancia**: Cada instancia gestiona sus propios backups
+- **Configuración independiente**: Frecuencia y retención personalizables
+- **Upload con drag & drop**: Subir backups desde el navegador
+- **Progress tracking**: Velocidad, tiempo estimado, porcentaje
+- **Conversión automática**: ZIP → TAR.GZ transparente
+- **Validación**: Verifica estructura (dump.sql + filestore)
+- **Descarga y restauración**: Gestión completa desde UI
+- **Logs detallados**: Seguimiento de todas las operaciones
+
 ### Dashboard de Métricas
 - **CPU**: Uso en tiempo real, cores, frecuencia
 - **RAM**: Memoria usada/total, porcentaje, swap
@@ -52,12 +72,13 @@ source scripts/utils/validate-env.sh --full
 - **Gráficos históricos**: Últimos 60 minutos
 
 ### Gestión de Instancias Odoo
-- **Listar instancias**: Producción y desarrollo
-- **Crear instancias dev**: Clonadas desde producción
+- **Listar instancias**: Producción y desarrollo con filtros
+- **Crear instancias producción**: Múltiples clientes
+- **Crear instancias dev**: Clonadas desde cualquier producción
 - **Actualizar BD**: Sincronizar con producción
 - **Actualizar archivos**: Sincronizar código
 - **Reiniciar instancias**: Control de servicios
-- **Eliminar instancias**: Limpieza completa
+- **Eliminar instancias**: Limpieza completa (prod y dev)
 - **Ver logs en tiempo real**: Por instancia
 
 ### Logs Centralizados
@@ -523,4 +544,15 @@ Para problemas o dudas:
 
 ---
 
-**Última actualización**: 2025-10-30
+## 📚 Documentación Adicional
+
+- **[MULTI_PRODUCTION_INSTANCES.md](docs/MULTI_PRODUCTION_INSTANCES.md)** - Guía completa de multi-instancia
+- **[BACKUP_V2_TESTING_GUIDE.md](BACKUP_V2_TESTING_GUIDE.md)** - Guía de testing del sistema de backups
+- **[TEST_UPLOAD_BACKUP_V2.md](TEST_UPLOAD_BACKUP_V2.md)** - Testing de upload de backups
+- **[PRODUCTION_INSTANCES_QUICKSTART.md](PRODUCTION_INSTANCES_QUICKSTART.md)** - Inicio rápido multi-instancia
+
+---
+
+**Repositorio**: https://github.com/mtriggiano/api-dev-softrigx  
+**Última actualización**: 2025-11-20  
+**Versión**: 3.0 - Multi-Instancia + Backups V2
