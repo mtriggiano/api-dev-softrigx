@@ -377,5 +377,9 @@ cat > "$INFO_FILE" <<EOF
 📦 Módulos instalados: base, web, web_enterprise, mail, account, web_assets, base_setup, contacts, l10n_latam_base, l10n_ar, l10n_ar_reports
 EOF
 
+# Registrar instancia en archivo de tracking
+PROD_INSTANCES_FILE="${DATA_PATH}/prod-instances.txt"
+echo "$INSTANCE_NAME|18|enterprise|$DOMAIN|$PORT" >> "$PROD_INSTANCES_FILE"
+
 echo "✅ Instancia creada con éxito: https://$DOMAIN"
 echo "📂 Ver detalles en: $BASE_DIR/info-instancia.txt"
