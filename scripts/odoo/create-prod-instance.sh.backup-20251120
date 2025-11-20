@@ -1,9 +1,8 @@
 #!/bin/bash
 
-# 🚀 Script de creación de instancia Odoo en PRODUCCIÓN (Multi-Versión)
+# 🚀 Script de creación de instancia Odoo 19 Enterprise en PRODUCCIÓN
 # IMPORTANTE: Este script SIEMPRE crea instancias en SUBDOMINIOS
 # NUNCA usa el dominio raíz para proteger el dominio principal
-# Soporta: Odoo 19/18 Enterprise/Community
 
 set -e
 
@@ -14,7 +13,6 @@ export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 SCRIPT_DIR="$(cd "$(/usr/bin/dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../utils/load-env.sh"
 source "$SCRIPT_DIR/../utils/ssl-manager.sh"
-source "$SCRIPT_DIR/../utils/odoo-version-manager.sh"
 
 # Validar variables requeridas
 source "$SCRIPT_DIR/../utils/validate-env.sh" \
@@ -45,39 +43,17 @@ mkdir -p "$DATA_PATH"
 touch "$PUERTOS_FILE"
 touch "$PROD_INSTANCES_FILE"
 
-# Obtener parámetros
+# Obtener nombre de instancia y método SSL
 RAW_NAME="$1"
-ODOO_VERSION="$2"  # Opcional: 19 o 18 (default: 19)
-ODOO_EDITION="$3"  # Opcional: enterprise o community (default: enterprise)
-SSL_METHOD="$4"   # Opcional: 1=letsencrypt, 2=cloudflare, 3=http
+SSL_METHOD="$2"  # Opcional: 1=letsencrypt, 2=cloudflare, 3=http
 
 if [[ -z "$RAW_NAME" ]]; then 
     echo "❌ Debes pasar el nombre de la instancia (será usado como subdominio)."
-    echo "   Ejemplo: ./create-prod-instance.sh cliente1 [version] [edition] [ssl_method]"
+    echo "   Ejemplo: ./create-prod-instance.sh cliente1 [ssl_method]"
     echo "   Creará: cliente1.softrigx.com"
-    echo ""
-    echo "   Parámetros:"
-    echo "   - version: 19 o 18 (default: 19)"
-    echo "   - edition: enterprise o community (default: enterprise)"
-    echo "   - ssl_method: 1=Let's Encrypt (default), 2=Cloudflare, 3=HTTP"
-    echo ""
-    list_odoo_versions
+    echo "   ssl_method: 1=Let's Encrypt (default), 2=Cloudflare, 3=HTTP"
     exit 1
 fi
-
-# Valores por defecto
-ODOO_VERSION="${ODOO_VERSION:-19}"
-ODOO_EDITION="${ODOO_EDITION:-enterprise}"
-
-# Validar versión de Odoo
-if ! validate_odoo_version "$ODOO_VERSION" "$ODOO_EDITION"; then
-    exit 1
-fi
-
-# Obtener configuración de la versión
-SERVICE_PREFIX=$(get_service_prefix "$ODOO_VERSION" "$ODOO_EDITION")
-REPO=$(get_repo_path "$ODOO_VERSION" "$ODOO_EDITION")
-PYTHON=$(get_python_bin "$ODOO_VERSION" "$ODOO_EDITION")
 
 # Normalizar nombre (minúsculas, sin espacios)
 INSTANCE=$(echo "$RAW_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/ /-/g')
@@ -105,7 +81,6 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "🚀 CREACIÓN DE INSTANCIA DE PRODUCCIÓN"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "📛 Nombre instancia: $INSTANCE_NAME"
-echo "📦 Odoo: $ODOO_VERSION $(echo $ODOO_EDITION | tr '[:lower:]' '[:upper:]')"
 echo "🌐 Dominio: $DOMAIN"
 echo "🏠 Dominio raíz protegido: $CF_ZONE_NAME"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -121,9 +96,9 @@ if [[ -d "$ODOO_ROOT/$INSTANCE_NAME" ]]; then
         exit 1
     fi
     echo "🗑️  Eliminando instancia existente..."
-    sudo systemctl stop "$SERVICE_PREFIX-$INSTANCE_NAME" 2>/dev/null || true
-    sudo systemctl disable "$SERVICE_PREFIX-$INSTANCE_NAME" 2>/dev/null || true
-    sudo rm -f "/etc/systemd/system/$SERVICE_PREFIX-$INSTANCE_NAME.service"
+    sudo systemctl stop "odoo19e-$INSTANCE_NAME" 2>/dev/null || true
+    sudo systemctl disable "odoo19e-$INSTANCE_NAME" 2>/dev/null || true
+    sudo rm -f "/etc/systemd/system/odoo19e-$INSTANCE_NAME.service"
     sudo rm -f "/etc/nginx/sites-enabled/$INSTANCE_NAME"
     sudo rm -f "/etc/nginx/sites-available/$INSTANCE_NAME"
     sudo -u postgres dropdb "$INSTANCE_NAME" 2>/dev/null || true
@@ -200,7 +175,7 @@ done
 echo "✅ Puerto evented asignado: $EVENTED_PORT"
 
 BASE_DIR="$ODOO_ROOT/$INSTANCE_NAME"
-SERVICE="/etc/systemd/system/$SERVICE_PREFIX-$INSTANCE_NAME.service"
+SERVICE="/etc/systemd/system/odoo19e-$INSTANCE_NAME.service"
 ODOO_CONF="$BASE_DIR/odoo.conf"
 ODOO_LOG="$BASE_DIR/odoo.log"
 NGINX_CONF="/etc/nginx/sites-available/$INSTANCE_NAME"
@@ -382,16 +357,16 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
-sudo mv /tmp/odoo-service-$INSTANCE_NAME.service /etc/systemd/system/$SERVICE_PREFIX-$INSTANCE_NAME.service
+sudo mv /tmp/odoo-service-$INSTANCE_NAME.service /etc/systemd/system/odoo19e-$INSTANCE_NAME.service
 
-if [ ! -f "/etc/systemd/system/$SERVICE_PREFIX-$INSTANCE_NAME.service" ]; then
+if [ ! -f "/etc/systemd/system/odoo19e-$INSTANCE_NAME.service" ]; then
   echo "❌ Error: No se pudo crear el servicio systemd"
   exit 1
 fi
 
 echo "🔄 Recargando systemd..."
 sudo systemctl daemon-reload
-sudo systemctl enable "$SERVICE_PREFIX-$INSTANCE_NAME"
+sudo systemctl enable "odoo19e-$INSTANCE_NAME"
 
 # Instalar módulos base
 echo "🔌 Cerrando conexiones existentes..."
@@ -429,14 +404,14 @@ sudo -u $USER "$VENV_PYTHON" "$BASE_DIR/odoo-server/odoo-bin" -c "$ODOO_CONF" \
 
 # Iniciar servicio
 echo "🚀 Iniciando servicio Odoo..."
-sudo systemctl start "$SERVICE_PREFIX-$INSTANCE_NAME"
+sudo systemctl start "odoo19e-$INSTANCE_NAME"
 sleep 3
 
-if sudo systemctl is-active --quiet "$SERVICE_PREFIX-$INSTANCE_NAME"; then
+if sudo systemctl is-active --quiet "odoo19e-$INSTANCE_NAME"; then
   echo "✅ Servicio iniciado correctamente."
 else
   echo "❌ Error: El servicio no pudo iniciarse."
-  echo "   Ver logs: sudo journalctl -u $SERVICE_PREFIX-$INSTANCE_NAME -n 50"
+  echo "   Ver logs: sudo journalctl -u odoo19e-$INSTANCE_NAME -n 50"
   exit 1
 fi
 
@@ -446,7 +421,7 @@ configure_ssl "$DOMAIN" "$INSTANCE_NAME" "$PORT" "$SSL_METHOD" "$EVENTED_PORT"
 
 # Registrar puerto e instancia
 echo "$PORT" >> "$PUERTOS_FILE"
-echo "$INSTANCE_NAME|$ODOO_VERSION|$ODOO_EDITION|$DOMAIN|$PORT" >> "$PROD_INSTANCES_FILE"
+echo "$INSTANCE_NAME" >> "$PROD_INSTANCES_FILE"
 
 # Generar archivo de información
 cat > "$INFO_FILE" <<EOF
@@ -457,7 +432,6 @@ cat > "$INFO_FILE" <<EOF
 🔧 Información General
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📛 Nombre instancia: $INSTANCE_NAME
-📦 Odoo: $ODOO_VERSION $(echo $ODOO_EDITION | tr '[:lower:]' '[:upper:]')
 🌐 Dominio: https://$DOMAIN
 🏠 Dominio raíz (protegido): $CF_ZONE_NAME
 🛠️  Puerto HTTP: $PORT
@@ -476,12 +450,12 @@ cat > "$INFO_FILE" <<EOF
 
 🔧 Gestión del Servicio
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🧩 Servicio: $SERVICE_PREFIX-$INSTANCE_NAME
-🔁 Reiniciar: sudo systemctl restart $SERVICE_PREFIX-$INSTANCE_NAME
-⏹️  Detener: sudo systemctl stop $SERVICE_PREFIX-$INSTANCE_NAME
-▶️  Iniciar: sudo systemctl start $SERVICE_PREFIX-$INSTANCE_NAME
-📋 Estado: sudo systemctl status $SERVICE_PREFIX-$INSTANCE_NAME
-🌀 Logs: sudo journalctl -u $SERVICE_PREFIX-$INSTANCE_NAME -n 50 --no-pager
+🧩 Servicio: odoo19e-$INSTANCE_NAME
+🔁 Reiniciar: sudo systemctl restart odoo19e-$INSTANCE_NAME
+⏹️  Detener: sudo systemctl stop odoo19e-$INSTANCE_NAME
+▶️  Iniciar: sudo systemctl start odoo19e-$INSTANCE_NAME
+📋 Estado: sudo systemctl status odoo19e-$INSTANCE_NAME
+🌀 Logs: sudo journalctl -u odoo19e-$INSTANCE_NAME -n 50 --no-pager
 
 🌍 Información de Red
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

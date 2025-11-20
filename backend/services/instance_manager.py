@@ -216,11 +216,13 @@ class InstanceManager:
         except Exception as e:
             return {'success': False, 'error': str(e)}
     
-    def create_prod_instance(self, name, ssl_method='letsencrypt'):
+    def create_prod_instance(self, name, version='19', edition='enterprise', ssl_method='letsencrypt'):
         """Crea una nueva instancia de producción con subdominio obligatorio
         
         Args:
             name: Nombre de la instancia (será usado como subdominio)
+            version: Versión de Odoo (19 o 18)
+            edition: Edición (enterprise o community)
             ssl_method: Método SSL a usar (cloudflare, letsencrypt, http)
         
         Returns:
@@ -246,6 +248,13 @@ class InstanceManager:
                 'error': 'Nombre inválido. Debe contener solo letras minúsculas, números y guiones.'
             }
         
+        # Validar versión y edición
+        if version not in ['18', '19']:
+            return {'success': False, 'error': 'Versión debe ser 18 o 19'}
+        
+        if edition not in ['enterprise', 'community']:
+            return {'success': False, 'error': 'Edición debe ser enterprise o community'}
+        
         script_path = os.path.join(self.scripts_path, 'odoo/create-prod-instance.sh')
         
         if not os.path.exists(script_path):
@@ -259,25 +268,27 @@ class InstanceManager:
             ssl_map = {'letsencrypt': '1', 'cloudflare': '2', 'http': '3'}
             ssl_arg = ssl_map.get(ssl_method, '1')
             
-            # Ejecutar script en background desacoplado del proceso padre (igual que dev)
-            # Pasar método SSL como segundo argumento en lugar de stdin
+            # Ejecutar script en background desacoplado del proceso padre
+            # Argumentos: nombre, version, edition, ssl_method
             with open(log_file_path, 'w') as log_file:
                 process = subprocess.Popen(
-                    ['/bin/bash', script_path, name, ssl_arg],
+                    ['/bin/bash', script_path, name, version, edition, ssl_arg],
                     stdout=log_file,
                     stderr=subprocess.STDOUT,
                     start_new_session=True,
                     text=True
                 )
             
-            logger.info(f"Production instance creation started: {instance_name}")
+            logger.info(f"Production instance creation started: {instance_name} (Odoo {version} {edition})")
             
             return {
                 'success': True,
-                'message': f'Creación de instancia de producción {instance_name} iniciada. Dominio: {name}.{domain_root}',
+                'message': f'Creación de instancia de producción {instance_name} iniciada. Dominio: {name}.{domain_root} - Odoo {version} {edition}',
                 'log_file': log_file_path,
                 'instance_name': instance_name,
-                'domain': f'{name}.{domain_root}'
+                'domain': f'{name}.{domain_root}',
+                'version': version,
+                'edition': edition
             }
         except Exception as e:
             logger.error(f"Error creating production instance: {e}")

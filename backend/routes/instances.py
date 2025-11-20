@@ -97,6 +97,21 @@ def create_instance():
         log_action(user_id, 'create_instance', f"dev-{data['name']}", str(e), 'error')
         return jsonify({'error': str(e)}), 500
 
+@instances_bp.route('/odoo-versions', methods=['GET'])
+@jwt_required()
+def get_odoo_versions():
+    """Obtiene las versiones de Odoo disponibles"""
+    try:
+        versions = [
+            {'version': '19', 'edition': 'enterprise', 'label': 'Odoo 19 Enterprise'},
+            {'version': '19', 'edition': 'community', 'label': 'Odoo 19 Community'},
+            {'version': '18', 'edition': 'enterprise', 'label': 'Odoo 18 Enterprise'},
+            {'version': '18', 'edition': 'community', 'label': 'Odoo 18 Community'}
+        ]
+        return jsonify({'success': True, 'versions': versions}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @instances_bp.route('/create-production', methods=['POST'])
 @jwt_required()
 def create_production_instance():
@@ -104,7 +119,9 @@ def create_production_instance():
     
     Body params:
         - name: Nombre de la instancia (será usado como subdominio)
-        - ssl_method: Método SSL (cloudflare, letsencrypt, http) - opcional, default: cloudflare
+        - version: Versión de Odoo (19 o 18) - opcional, default: 19
+        - edition: Edición (enterprise o community) - opcional, default: enterprise
+        - ssl_method: Método SSL (cloudflare, letsencrypt, http) - opcional, default: letsencrypt
     
     IMPORTANTE: El nombre será usado como subdominio. 
     Ejemplo: name="cliente1" creará cliente1.softrigx.com
@@ -122,14 +139,23 @@ def create_production_instance():
         return jsonify({'error': 'Nombre de instancia requerido'}), 400
     
     name = data['name'].strip().lower()
+    version = data.get('version', '19')
+    edition = data.get('edition', 'enterprise')
     ssl_method = data.get('ssl_method', 'letsencrypt')
     
     # Validación adicional en el endpoint
     if not name:
         return jsonify({'error': 'El nombre no puede estar vacío'}), 400
     
+    # Validar versión y edición
+    if version not in ['18', '19']:
+        return jsonify({'error': 'Versión debe ser 18 o 19'}), 400
+    
+    if edition not in ['enterprise', 'community']:
+        return jsonify({'error': 'Edición debe ser enterprise o community'}), 400
+    
     try:
-        result = manager.create_prod_instance(name, ssl_method)
+        result = manager.create_prod_instance(name, version, edition, ssl_method)
         
         # Log
         log_action(
