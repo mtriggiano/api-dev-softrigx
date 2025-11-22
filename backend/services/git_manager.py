@@ -326,7 +326,41 @@ class GitManager:
                 auth_url = original_url.replace('https://', f'https://{token}@')
                 self._run_git_command(['git', 'remote', 'set-url', 'origin', auth_url], local_path)
         
-        # Pull
+        # Verificar si la rama existe en el remoto
+        if branch:
+            ls_remote = self._run_git_command(['git', 'ls-remote', '--heads', 'origin', branch], local_path)
+            branch_exists = ls_remote['success'] and ls_remote['stdout'].strip()
+            
+            if not branch_exists:
+                # La rama no existe en el remoto, hacer push inicial
+                logger.info(f"Branch {branch} no existe en remoto, creando con push inicial")
+                # Asegurarse de que estamos en la rama correcta
+                self._run_git_command(['git', 'checkout', '-B', branch], local_path)
+                # Hacer commit inicial si no hay commits
+                status = self._run_git_command(['git', 'status', '--porcelain'], local_path)
+                if status['success'] and status['stdout'].strip():
+                    self._run_git_command(['git', 'add', '.'], local_path)
+                    self._run_git_command(['git', 'commit', '-m', 'Initial commit'], local_path)
+                # Push inicial
+                push_result = self._run_git_command(['git', 'push', '-u', 'origin', branch], local_path)
+                
+                # Restaurar URL original si se modificó
+                if token and original_url:
+                    self._run_git_command(['git', 'remote', 'set-url', 'origin', original_url], local_path)
+                
+                if push_result['success']:
+                    return {
+                        'success': True,
+                        'message': f'Rama {branch} creada en remoto',
+                        'output': push_result['stdout']
+                    }
+                else:
+                    return {
+                        'success': False,
+                        'error': f'Error al crear rama en remoto: {push_result.get("stderr")}'
+                    }
+        
+        # Pull normal
         if branch:
             pull_result = self._run_git_command(['git', 'pull', 'origin', branch], local_path)
         else:
