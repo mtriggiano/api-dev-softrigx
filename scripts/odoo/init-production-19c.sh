@@ -217,17 +217,30 @@ fi
 
 echo "📦 Descomprimiendo repositorio en $BASE_DIR/odoo-server..."
 unzip "$REPO" -d "$BASE_DIR/tmp_unzip"
-cp "$BASE_DIR/tmp_unzip/setup.py" "$BASE_DIR/odoo-server/"
-cp "$BASE_DIR/tmp_unzip/requirements.txt" "$BASE_DIR/odoo-server/requirements.txt"
-cp -r "$BASE_DIR/tmp_unzip/odoo" "$BASE_DIR/odoo-server/"
-cp -r "$BASE_DIR/tmp_unzip/addons" "$BASE_DIR/odoo-server/"
+
+# Detectar si hay una subcarpeta o si los archivos están en la raíz
+UNZIP_DIR="$BASE_DIR/tmp_unzip"
+SUBDIR_COUNT=$(find "$UNZIP_DIR" -mindepth 1 -maxdepth 1 -type d | wc -l)
+FILE_COUNT=$(find "$UNZIP_DIR" -mindepth 1 -maxdepth 1 -type f | wc -l)
+
+if [[ $SUBDIR_COUNT -eq 1 ]] && [[ $FILE_COUNT -eq 0 ]]; then
+  # Hay exactamente una subcarpeta y ningún archivo en la raíz
+  SUBDIR_NAME=$(ls -1 "$UNZIP_DIR")
+  UNZIP_DIR="$UNZIP_DIR/$SUBDIR_NAME"
+  echo "📁 Detectada subcarpeta en ZIP: $SUBDIR_NAME"
+fi
+
+cp "$UNZIP_DIR/setup.py" "$BASE_DIR/odoo-server/"
+cp "$UNZIP_DIR/requirements.txt" "$BASE_DIR/odoo-server/requirements.txt"
+cp -r "$UNZIP_DIR/odoo" "$BASE_DIR/odoo-server/"
+cp -r "$UNZIP_DIR/addons" "$BASE_DIR/odoo-server/"
 # Copiar odoo-bin y setup si existen
-if [[ -f "$BASE_DIR/tmp_unzip/odoo-bin" ]]; then
-  cp "$BASE_DIR/tmp_unzip/odoo-bin" "$BASE_DIR/odoo-server/"
+if [[ -f "$UNZIP_DIR/odoo-bin" ]]; then
+  cp "$UNZIP_DIR/odoo-bin" "$BASE_DIR/odoo-server/"
   chmod +x "$BASE_DIR/odoo-server/odoo-bin"
 fi
-if [[ -d "$BASE_DIR/tmp_unzip/setup" ]]; then
-  cp -r "$BASE_DIR/tmp_unzip/setup" "$BASE_DIR/odoo-server/"
+if [[ -d "$UNZIP_DIR/setup" ]]; then
+  cp -r "$UNZIP_DIR/setup" "$BASE_DIR/odoo-server/"
 fi
 rm -rf "$BASE_DIR/tmp_unzip"
 
