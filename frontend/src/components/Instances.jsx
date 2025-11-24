@@ -7,10 +7,18 @@ import GitHubModal from './GitHubModal';
 
 // Modales refactorizados
 import { CreationLogModal, UpdateLogModal } from './instances/modals';
+// Hooks personalizados
+import { useInstances, useCreationLog, useUpdateLog } from './instances/hooks';
 
 export default function Instances() {
-  const [instanceList, setInstanceList] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // Hook para manejar lista de instancias (reemplaza useState y useEffect)
+  const { instanceList, loading, fetchInstances } = useInstances();
+  
+  // Hook para manejar log de creación (reemplaza useState, useEffect y polling)
+  const { creationLog, creationLogRef, startPolling: startCreationPolling, closeLog: closeCreationLog } = useCreationLog();
+  
+  // Hook para manejar log de actualización (reemplaza useState, useEffect y polling)
+  const { updateLog, updateLogRef, startPolling: startUpdatePolling, closeLog: closeUpdateLog } = useUpdateLog();
   const [actionLoading, setActionLoading] = useState({});
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showCreateProdModal, setShowCreateProdModal] = useState(false);
@@ -28,58 +36,13 @@ export default function Instances() {
   const [logsLoading, setLogsLoading] = useState(false);
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, action: null, instanceName: null, neutralize: true });
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
-  const [creationLog, setCreationLog] = useState({ show: false, instanceName: '', log: '' });
-  const [updateLog, setUpdateLog] = useState({ show: false, instanceName: '', action: '', log: '', completed: false });
   const [restartModal, setRestartModal] = useState({ show: false, instanceName: '', status: 'Reiniciando...' });
   const [githubModal, setGithubModal] = useState({ show: false, instanceName: '' });
   const [deleteProductionModal, setDeleteProductionModal] = useState({ show: false, instanceName: '', confirmation: '', step: 1 });
-  const [filterByProduction, setFilterByProduction] = useState('all'); // 'all' o nombre de instancia de producción
+  const [filterByProduction, setFilterByProduction] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Refs para auto-scroll
-  const creationLogRef = useRef(null);
-  const updateLogRef = useRef(null);
-
-  useEffect(() => {
-    fetchInstances();
-    const interval = setInterval(fetchInstances, 10000); // Actualizar cada 10 segundos
-    return () => clearInterval(interval);
-  }, []);
-
-  // Auto-scroll para el log de creación
-  useEffect(() => {
-    if (creationLogRef.current) {
-      creationLogRef.current.scrollTop = creationLogRef.current.scrollHeight;
-    }
-  }, [creationLog.log]);
-
-  // Auto-scroll para el log de actualización
-  useEffect(() => {
-    if (updateLogRef.current) {
-      updateLogRef.current.scrollTop = updateLogRef.current.scrollHeight;
-    }
-  }, [updateLog.log]);
-
-  // Cleanup polling interval when component unmounts
-  useEffect(() => {
-    return () => {
-      if (window._pollingInterval) {
-        clearInterval(window._pollingInterval);
-        window._pollingInterval = null;
-      }
-    };
-  }, []);
-
-  const fetchInstances = async () => {
-    try {
-      const response = await instances.list();
-      setInstanceList(response.data.instances);
-      setLoading(false);
-    } catch (error) {
-      console.error('Error fetching instances:', error);
-      setLoading(false);
-    }
-  };
+  // Los hooks ya manejan: fetchInstances, creationLog, updateLog, refs y auto-scroll
 
   const showConfirmation = (action, instanceName) => {
     // Por defecto, neutralizar en update-db
@@ -104,35 +67,9 @@ export default function Instances() {
           : await instances.regenerateAssets(instanceName);
         
         if (response.data.success) {
-          setUpdateLog({ show: true, instanceName, action, log: 'Iniciando actualizaci\u00f3n...\n', completed: false });
-          
-          // Polling del log cada 2 segundos
-          if (window._pollingInterval) clearInterval(window._pollingInterval);
-          window._pollingInterval = setInterval(async () => {
-            try {
-              const logResponse = await instances.getUpdateLog(instanceName, action);
-              // Si el log contiene "\u2705" significa que termin\u00f3
-              const isCompleted = logResponse.data.log && logResponse.data.log.includes('\u2705');
-              setUpdateLog(prev => ({
-                ...prev,
-                log: prev.log + "\n" + (logResponse.data.log || ""),
-                completed: isCompleted
-              }));
-              if (isCompleted) {
-                clearInterval(window._pollingInterval);
-                window._pollingInterval = null;
-                setToast({ show: true, message: 'Actualizaci\u00f3n completada', type: 'success' });
-                fetchInstances();
-              }
-            } catch (err) {
-              console.error('Polling error:', err);
-              setToast({ show: true, message: 'Error obteniendo log, reintentando…', type: 'warning' });
-              if (err?.response?.status === 404) {
-                clearInterval(window._pollingInterval);
-                window._pollingInterval = null;
-              }
-            }
-          }, 2000);
+          // Usar hook para manejar el polling del log
+          startUpdatePolling(instanceName, action);
+          fetchInstances();
         }
       } else if (action === 'restart') {
         // Para reiniciar, mostrar modal con estado
@@ -216,43 +153,9 @@ export default function Instances() {
     try {
       const response = await instances.create(newInstanceName, selectedSourceInstance, neutralizeDatabase);
       setShowCreateModal(false);
-      setCreationLog({ show: true, instanceName: newInstanceName, log: 'Iniciando creación...\n' });
       
-      // Polling del log cada 2 segundos
-      if (window._pollingInterval) clearInterval(window._pollingInterval);
-      window._pollingInterval = setInterval(async () => {
-        try {
-          const logResponse = await instances.getCreationLog(newInstanceName);
-          setCreationLog(prev => ({
-            ...prev,
-            log: logResponse.data.log || "Log no disponible aún..."
-          }));
-          // Si el log contiene el mensaje final significa que terminó
-          if (logResponse.data.log && (
-            logResponse.data.log.includes('✅ Instancia de desarrollo creada con éxito') ||
-            logResponse.data.log.includes('Instancia creada con éxito')
-          )) {
-            clearInterval(window._pollingInterval);
-            window._pollingInterval = null;
-            setTimeout(() => {
-              if (window._pollingInterval) {
-                clearInterval(window._pollingInterval);
-                window._pollingInterval = null;
-              }
-              setCreationLog({ show: false, instanceName: '', log: '' });
-              setToast({ show: true, message: 'Instancia creada exitosamente', type: 'success' });
-              fetchInstances();
-            }, 3000);
-          }
-        } catch (err) {
-          console.error('Polling error:', err);
-          setToast({ show: true, message: 'Error obteniendo log, reintentando…', type: 'warning' });
-          if (err?.response?.status === 404) {
-            clearInterval(window._pollingInterval);
-            window._pollingInterval = null;
-          }
-        }
-      }, 2000);
+      // Usar hook para manejar el polling del log
+      startCreationPolling(newInstanceName, false); // false = dev instance
       
       setNewInstanceName('');
     } catch (error) {
@@ -289,40 +192,9 @@ export default function Instances() {
       setShowCreateProdModal(false);
       
       const instanceName = response.data.instance_name || `prod-${newProdInstanceName}`;
-      setCreationLog({ show: true, instanceName, log: 'Iniciando creación de instancia de producción...\n' });
       
-      // Polling del log cada 3 segundos (producción tarda más)
-      if (window._pollingInterval) clearInterval(window._pollingInterval);
-      window._pollingInterval = setInterval(async () => {
-        try {
-          const logResponse = await instances.getCreationLog(instanceName);
-          setCreationLog(prev => ({
-            ...prev,
-            log: logResponse.data.log || "Log no disponible aún..."
-          }));
-          // Si el log contiene "✅ ¡INSTANCIA CREADA EXITOSAMENTE!" significa que terminó
-          if (logResponse.data.log && (logResponse.data.log.includes('✅ ¡INSTANCIA CREADA EXITOSAMENTE!') || logResponse.data.log.includes('Instancia creada con éxito'))) {
-            clearInterval(window._pollingInterval);
-            window._pollingInterval = null;
-            setTimeout(() => {
-              if (window._pollingInterval) {
-                clearInterval(window._pollingInterval);
-                window._pollingInterval = null;
-              }
-              setCreationLog({ show: false, instanceName: '', log: '' });
-              setToast({ show: true, message: `Instancia de producción creada: ${response.data.domain}`, type: 'success' });
-              fetchInstances();
-            }, 3000);
-          }
-        } catch (err) {
-          console.error('Polling error:', err);
-          setToast({ show: true, message: 'Error obteniendo log, reintentando…', type: 'warning' });
-          if (err?.response?.status === 404) {
-            clearInterval(window._pollingInterval);
-            window._pollingInterval = null;
-          }
-        }
-      }, 3000);
+      // Usar hook para manejar el polling del log
+      startCreationPolling(instanceName, true); // true = production instance
       
       setNewProdInstanceName('');
       setOdooVersion('19');
@@ -782,26 +654,14 @@ export default function Instances() {
       <UpdateLogModal 
         updateLog={updateLog}
         updateLogRef={updateLogRef}
-        onClose={() => {
-          if (window._pollingInterval) {
-            clearInterval(window._pollingInterval);
-            window._pollingInterval = null;
-          }
-          setUpdateLog({ show: false, instanceName: '', action: '', log: '', completed: false });
-        }}
+        onClose={closeUpdateLog}
       />
 
-      {/* Modal de log de creación - Componente refactorizado */}
+      {/* Modal de log de creación */}
       <CreationLogModal 
         creationLog={creationLog}
         creationLogRef={creationLogRef}
-        onClose={() => {
-          if (window._pollingInterval) {
-            clearInterval(window._pollingInterval);
-            window._pollingInterval = null;
-          }
-          setCreationLog({ show: false, instanceName: '', log: '' });
-        }}
+        onClose={closeCreationLog}
       />
 
       {/* Modal de logs */}
