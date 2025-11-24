@@ -158,8 +158,11 @@ export default function Instances() {
       const response = await instances.create(newInstanceName, selectedSourceInstance, neutralizeDatabase);
       setShowCreateModal(false);
       
+      // Usar el nombre completo de la instancia que devuelve el backend
+      const instanceName = response.data.instance_name || `dev-${newInstanceName}`;
+      
       // Usar hook para manejar el polling del log
-      startCreationPolling(newInstanceName, false); // false = dev instance
+      startCreationPolling(instanceName, false); // false = dev instance
       
       setNewInstanceName('');
     } catch (error) {

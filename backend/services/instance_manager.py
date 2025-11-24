@@ -215,7 +215,8 @@ class InstanceManager:
             return {
                 'success': True,
                 'message': f'Creación de instancia {instance_name} iniciada. Ver logs: {log_file_path}',
-                'log_file': log_file_path
+                'log_file': log_file_path,
+                'instance_name': instance_name  # Devolver el nombre completo de la instancia
             }
         except Exception as e:
             return {'success': False, 'error': str(e)}
