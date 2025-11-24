@@ -158,7 +158,8 @@ DOMAIN="$INSTANCE_NAME.$CF_ZONE_NAME"
 BASE_DIR="$DEV_ROOT/$INSTANCE_NAME"
 
 # Configurar log ANTES de cualquier output importante
-LOG="/tmp/odoo-create-dev-$INSTANCE_NAME.log"
+# El nombre del log usa INSTANCE_NAME que ya incluye el prefijo "dev-"
+LOG="/tmp/odoo-create-$INSTANCE_NAME.log"
 exec > >(tee -a "$LOG") 2>&1
 chmod 666 "$LOG"
 

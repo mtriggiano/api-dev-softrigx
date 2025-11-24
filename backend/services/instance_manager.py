@@ -193,8 +193,12 @@ class InstanceManager:
             neutralize_arg = 'neutralize' if neutralize else 'no-neutralize'
             script_args.append(neutralize_arg)
             
+            # El nombre de la instancia completa incluye el prefijo "dev-"
+            instance_name = f'dev-{name}'
+            log_file_path = f'/tmp/odoo-create-{instance_name}.log'
+            
             # Ejecutar script en background desacoplado del proceso padre
-            with open(f'/tmp/odoo-create-dev-{name}.log', 'w') as log_file:
+            with open(log_file_path, 'w') as log_file:
                 process = subprocess.Popen(
                     script_args,
                     stdin=subprocess.PIPE,
@@ -206,12 +210,12 @@ class InstanceManager:
                 # Enviar confirmación
                 process.stdin.write('s\n')
                 process.stdin.close()
-            logger.info(f"Process started for dev instance {name} from source {source_instance or 'default'} (neutralize={neutralize})")
+            logger.info(f"Process started for dev instance {instance_name} from source {source_instance or 'default'} (neutralize={neutralize})")
             
             return {
                 'success': True,
-                'message': f'Creación de instancia {name} iniciada. Ver logs: /tmp/odoo-create-dev-{name}.log',
-                'log_file': f'/tmp/odoo-create-dev-{name}.log'
+                'message': f'Creación de instancia {instance_name} iniciada. Ver logs: {log_file_path}',
+                'log_file': log_file_path
             }
         except Exception as e:
             return {'success': False, 'error': str(e)}
