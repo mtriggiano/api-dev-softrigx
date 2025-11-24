@@ -222,7 +222,7 @@ export default function Instances() {
           const logResponse = await instances.getCreationLog(newInstanceName);
           setCreationLog(prev => ({
             ...prev,
-            log: prev.log + "\n" + (logResponse.data.log || "")
+            log: logResponse.data.log || "Log no disponible aún..."
           }));
           // Si el log contiene el mensaje final significa que terminó
           if (logResponse.data.log && (
@@ -295,7 +295,7 @@ export default function Instances() {
           const logResponse = await instances.getCreationLog(instanceName);
           setCreationLog(prev => ({
             ...prev,
-            log: prev.log + "\n" + (logResponse.data.log || "")
+            log: logResponse.data.log || "Log no disponible aún..."
           }));
           // Si el log contiene "✅ ¡INSTANCIA CREADA EXITOSAMENTE!" significa que terminó
           if (logResponse.data.log && (logResponse.data.log.includes('✅ ¡INSTANCIA CREADA EXITOSAMENTE!') || logResponse.data.log.includes('Instancia creada con éxito'))) {
