@@ -11,6 +11,8 @@ import { CreationLogModal, UpdateLogModal, CreateDevModal, CreateProdModal, Logs
 import { useInstances, useCreationLog, useUpdateLog } from './instances/hooks';
 // Componentes de tarjetas
 import { InstanceCard } from './instances/cards';
+// Utilidades
+import { getConfirmTitle, getConfirmMessage, applyAllFilters } from './instances/utils';
 
 export default function Instances() {
   // Hook para manejar lista de instancias (reemplaza useState y useEffect)
@@ -254,43 +256,12 @@ export default function Instances() {
     );
   }
 
-  // Filtrar instancias
-  let productionInstances = instanceList.filter(i => i.type === 'production');
-  let developmentInstances = instanceList.filter(i => i.type === 'development');
-
-  // Aplicar filtro por instancia de producción
-  if (filterByProduction !== 'all') {
-    // Mostrar solo la instancia de producción seleccionada
-    productionInstances = productionInstances.filter(i => i.name === filterByProduction);
-    
-    // Mostrar solo las instancias de desarrollo que corresponden a esta producción
-    // Las instancias dev tienen formato: dev-{nombre}-{produccion}
-    developmentInstances = developmentInstances.filter(i => {
-      // Extraer el nombre de la instancia de producción del nombre dev
-      // Ejemplo: dev-testp4-prod-panel4 -> prod-panel4
-      const match = i.database?.match(new RegExp(`dev-[^-]+-(.+)`));
-      if (match) {
-        const prodName = match[1];
-        return prodName === filterByProduction;
-      }
-      return false;
-    });
-  }
-
-  // Aplicar búsqueda por texto
-  if (searchTerm.trim()) {
-    const search = searchTerm.toLowerCase();
-    productionInstances = productionInstances.filter(i => 
-      i.name?.toLowerCase().includes(search) ||
-      i.domain?.toLowerCase().includes(search) ||
-      i.database?.toLowerCase().includes(search)
-    );
-    developmentInstances = developmentInstances.filter(i => 
-      i.name?.toLowerCase().includes(search) ||
-      i.domain?.toLowerCase().includes(search) ||
-      i.database?.toLowerCase().includes(search)
-    );
-  }
+  // Aplicar todos los filtros usando utilidad
+  const { production: productionInstances, development: developmentInstances } = applyAllFilters(
+    instanceList, 
+    filterByProduction, 
+    searchTerm
+  );
 
   return (
     <div className="space-y-6">
@@ -645,28 +616,4 @@ export default function Instances() {
   );
 }
 
-function getConfirmTitle(action) {
-  const titles = {
-    restart: 'Reiniciar Instancia',
-    'update-db': 'Actualizar Base de Datos',
-    'update-files': 'Actualizar Archivos',
-    'sync-filestore': 'Sincronizar Filestore',
-    'regenerate-assets': 'Regenerar Assets',
-    delete: 'Eliminar Instancia'
-  };
-  return titles[action] || 'Confirmar Acción';
-}
-
-function getConfirmMessage(action, instanceName) {
-  const messages = {
-    restart: `¿Deseas reiniciar la instancia ${instanceName}? El servicio se detendrá temporalmente.`,
-    'update-db': `¿Actualizar la base de datos de ${instanceName} desde producción? Esta operación puede tardar varios minutos.`,
-    'update-files': `¿Actualizar los archivos de ${instanceName} desde producción?`,
-    'sync-filestore': `¿Sincronizar el filestore (imágenes y archivos) de ${instanceName} desde producción? Esto copiará todos los assets.`,
-    'regenerate-assets': `¿Regenerar los assets (CSS, JS, iconos) de ${instanceName}? El servicio se detendrá temporalmente.`,
-    delete: `¿Estás seguro de eliminar la instancia ${instanceName}? Esta acción no se puede deshacer y se perderán todos los datos.`
-  };
-  return messages[action] || '¿Deseas continuar con esta acción?';
-}
-
-// InstanceCard ahora está en ./instances/cards/InstanceCard.jsx
+// Funciones auxiliares ahora están en ./instances/utils/
