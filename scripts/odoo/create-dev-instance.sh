@@ -157,6 +157,11 @@ DB_NAME="dev-$DEV_NAME-$PROD_DB"
 DOMAIN="$INSTANCE_NAME.$CF_ZONE_NAME"
 BASE_DIR="$DEV_ROOT/$INSTANCE_NAME"
 
+# Configurar log ANTES de cualquier output importante
+LOG="/tmp/odoo-create-dev-$INSTANCE_NAME.log"
+exec > >(tee -a "$LOG") 2>&1
+chmod 666 "$LOG"
+
 # Verificar si ya existe
 if [[ -d "$BASE_DIR" ]]; then
   echo "❌ La instancia '$INSTANCE_NAME' ya existe en $BASE_DIR"
@@ -178,10 +183,6 @@ if [[ "$CONFIRM" != "s" ]] && [[ "$CONFIRM" != "S" ]]; then
   echo "❌ Cancelado."
   exit 1
 fi
-
-LOG="/tmp/odoo-create-dev-$INSTANCE_NAME.log"
-exec > >(tee -a "$LOG") 2>&1
-chmod 666 "$LOG"
 
 echo "🚀 Iniciando creación de instancia de desarrollo: $INSTANCE_NAME"
 
