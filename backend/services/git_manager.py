@@ -35,12 +35,17 @@ class GitManager:
             if command[0] == 'git':
                 command[0] = '/usr/bin/git'
             
+            # Configurar entorno para que Git encuentre SSH
+            env = os.environ.copy()
+            env['GIT_SSH_COMMAND'] = '/usr/bin/ssh -o StrictHostKeyChecking=no'
+            
             result = subprocess.run(
                 command,
                 cwd=cwd,
                 capture_output=True,
                 text=True,
-                timeout=60
+                timeout=60,
+                env=env
             )
             
             return {

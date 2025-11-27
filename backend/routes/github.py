@@ -185,19 +185,50 @@ def create_config():
         
         db.session.commit()
         
+        # Si es una instancia de producción y no tiene .git, clonar el repositorio automáticamente
+        git_dir = os.path.join(local_path, '.git')
+        clone_attempted = False
+        clone_result = None
+        
+        if data['instance_name'].startswith('prod-') and not os.path.exists(git_dir):
+            logger.info(f"Clonando repositorio automáticamente para {data['instance_name']}")
+            clone_attempted = True
+            repo_url = f"https://github.com/{data['repo_owner']}/{data['repo_name']}.git"
+            
+            # Intentar clonar el repositorio
+            clone_result = git_manager.clone_repo(
+                repo_url=repo_url,
+                local_path=local_path,
+                branch=data.get('repo_branch', 'main'),
+                token=data['github_token']
+            )
+            
+            if clone_result['success']:
+                logger.info(f"Repositorio clonado exitosamente para {data['instance_name']}")
+            else:
+                logger.warning(f"No se pudo clonar el repositorio: {clone_result.get('error')}")
+        
         log_action(
             user_id,
             action,
             data['instance_name'],
-            f"Repo: {data['repo_owner']}/{data['repo_name']}",
+            f"Repo: {data['repo_owner']}/{data['repo_name']}" + (f" - Clonado: {clone_result['success']}" if clone_attempted else ""),
             'success'
         )
         
-        return jsonify({
+        response_data = {
             'success': True,
             'message': 'Configuración guardada exitosamente',
             'config': config.to_dict()
-        }), 200
+        }
+        
+        if clone_attempted:
+            response_data['clone_attempted'] = True
+            response_data['clone_success'] = clone_result['success']
+            if not clone_result['success']:
+                response_data['clone_error'] = clone_result.get('error')
+        
+        return jsonify(response_data), 200
     except Exception as e:
         db.session.rollback()
         log_action(user_id, 'create_github_config', data.get('instance_name'), str(e), 'error')
